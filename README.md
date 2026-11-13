@@ -1,3 +1,24 @@
+# Murmur
+
+Murmur is a modified fork of [bitchat-android](https://github.com/permissionlesstech/bitchat-android),
+changed in November 2026 and distributed under the same GPL-3.0 license (see `LICENSE.md`).
+It keeps Bitchat's wire protocol, so Murmur phones and watches talk to stock Bitchat clients.
+
+What this fork changes:
+
+- **Name and application ID** (`xfuturehb.murmur`) for both the phone and Wear OS apps, so it
+  installs alongside the official app. Kotlin packages remain `com.bitchat.*`.
+- **Phone-watch tunnel.** A watch paired to a phone running Murmur switches its own Bluetooth mesh
+  radio off and sends its packets through the phone over the Wearable Data Layer. The watch keeps
+  its own identity and keys.
+- **Standalone rendezvous.** Away from its phone, the watch advertises continuously at low power
+  and scans in a ten-second window around each minute boundary, instead of on an unaligned timer.
+- Offline APK sharing is disabled, because it distributes the upstream APK.
+
+Murmur is not affiliated with or endorsed by the Bitchat project. The upstream README follows.
+
+---
+
 <img width="256" height="256" alt="icon_128x128@2x" src="https://github.com/user-attachments/assets/90133f83-b4f6-41c6-aab9-25d0859d2a47" />
 
 ## bitchat for Android
