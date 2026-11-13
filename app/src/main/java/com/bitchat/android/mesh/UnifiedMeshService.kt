@@ -6,6 +6,8 @@ import com.bitchat.android.favorites.FavoriteControlMessage
 import com.bitchat.android.model.BitchatFilePacket
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.noise.NoiseSession
+import com.bitchat.android.wearlink.SecondaryMeshService
+import com.bitchat.android.wearlink.WearLinkController
 import com.bitchat.android.wifiaware.WifiAwareController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -63,6 +65,9 @@ class UnifiedMeshService(
         try { WifiAwareController.startIfPossible() } catch (e: Exception) {
             Log.w(TAG, "Failed to start Wi-Fi Aware transport: ${e.message}")
         }
+        try { WearLinkController.startIfPossible(context) } catch (e: Exception) {
+            Log.w(TAG, "Failed to start watch link transport: ${e.message}")
+        }
         startAnnouncementScheduler()
         refreshDelegates()
     }
@@ -72,6 +77,7 @@ class UnifiedMeshService(
         announcementJob = null
         try { bluetooth.stopServices() } catch (_: Exception) { }
         try { WifiAwareController.stop() } catch (_: Exception) { }
+        try { WearLinkController.stop() } catch (_: Exception) { }
     }
 
     private fun startAnnouncementScheduler() {
@@ -434,9 +440,18 @@ class UnifiedMeshService(
         return ids.toList()
     }
 
+    /**
+     * Wi-Fi Aware and the paired-watch link, presented as one secondary transport so the
+     * BLE-versus-other selection below stays a two-way choice. See [SecondaryMeshService].
+     */
+    private val secondaryTransports = SecondaryMeshService(
+        wifi = { WifiAwareController.getService() },
+        wear = { WearLinkController.getService() }
+    )
+
     private fun wifiService(): MeshService? {
         return try {
-            WifiAwareController.getService()?.also { service ->
+            secondaryTransports.takeIf { it.hasAny() }?.also { service ->
                 if (delegate != null && service.delegate !== this) {
                     service.delegate = this
                 }

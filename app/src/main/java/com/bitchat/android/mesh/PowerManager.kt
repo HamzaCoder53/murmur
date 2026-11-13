@@ -42,6 +42,12 @@ class PowerManager private constructor(context: Context) : LifecycleEventObserve
 
     enum class BatteryBand { NORMAL, LOW, CRITICAL }
 
+    /**
+     * Lets one owner take over when the BLE scanner runs, replacing the profile's duty cycle.
+     * Null (the default) leaves scheduling to the resolved power profile.
+     */
+    enum class ScanWindowOverride { OPEN, CLOSED }
+
     data class BleSchedule(
         val scanOnMs: Long,
         val scanOffMs: Long,
@@ -96,6 +102,7 @@ class PowerManager private constructor(context: Context) : LifecycleEventObserve
     @Volatile private var isAppInBackground = true
     @Volatile private var hasDirectPeers = false
     @Volatile private var shutdown = false
+    @Volatile private var scanWindowOverride: ScanWindowOverride? = null
 
     private val _profile = MutableStateFlow(
         PowerProfileResolver.resolve(
@@ -157,6 +164,19 @@ class PowerManager private constructor(context: Context) : LifecycleEventObserve
     fun start() = Unit
 
     /**
+     * Hand scan scheduling to an external owner, or pass null to return it to the power profile.
+     * While OPEN the scanner runs continuously at low latency; while CLOSED it stays off.
+     * Advertising, connection limits and announcement cadence keep following the profile.
+     */
+    fun setScanWindowOverride(override: ScanWindowOverride?) {
+        if (scanWindowOverride == override) return
+        scanWindowOverride = override
+        refreshProfile()
+    }
+
+    fun getScanWindowOverride(): ScanWindowOverride? = scanWindowOverride
+
+    /**
      * Process-level teardown for explicit full application shutdown only.
      * Transport stop/restart paths must not call this.
      */
@@ -188,6 +208,16 @@ class PowerManager private constructor(context: Context) : LifecycleEventObserve
         val current = profile.value
         val builder = ScanSettings.Builder()
             .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
+
+        if (scanWindowOverride == ScanWindowOverride.OPEN) {
+            // A short externally scheduled window has to find peers before it closes.
+            return builder
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
+                .setNumOfMatches(ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT)
+                .setReportDelay(0)
+                .build()
+        }
 
         when (current.mode) {
             PowerMode.PERFORMANCE -> builder
@@ -252,11 +282,14 @@ class PowerManager private constructor(context: Context) : LifecycleEventObserve
 
     private fun refreshProfile() {
         if (shutdown) return
-        val next = PowerProfileResolver.resolve(
-            batteryLevel = batteryLevel,
-            isCharging = isCharging,
-            isBackground = isAppInBackground,
-            hasDirectPeers = hasDirectPeers
+        val next = PowerProfileResolver.withScanWindowOverride(
+            PowerProfileResolver.resolve(
+                batteryLevel = batteryLevel,
+                isCharging = isCharging,
+                isBackground = isAppInBackground,
+                hasDirectPeers = hasDirectPeers
+            ),
+            scanWindowOverride
         )
         if (_profile.value != next) {
             Log.i(
@@ -286,6 +319,22 @@ class PowerManager private constructor(context: Context) : LifecycleEventObserve
  * Pure policy resolver so cadence and battery-boundary behavior can be tested without Android.
  */
 internal object PowerProfileResolver {
+    /** Scan schedule that keeps the scanner off; see [PowerManager.ScanWindowOverride.CLOSED]. */
+    val SCAN_OFF = PowerManager.BleSchedule(scanOnMs = 0L, scanOffMs = Long.MAX_VALUE, continuousScan = false)
+
+    fun withScanWindowOverride(
+        profile: PowerManager.RuntimePerformanceProfile,
+        override: PowerManager.ScanWindowOverride?
+    ): PowerManager.RuntimePerformanceProfile = when (override) {
+        null -> profile
+        PowerManager.ScanWindowOverride.OPEN -> profile.copy(
+            ble = profile.ble.copy(scanOnMs = Long.MAX_VALUE, scanOffMs = 0L, continuousScan = true)
+        )
+        PowerManager.ScanWindowOverride.CLOSED -> profile.copy(
+            ble = SCAN_OFF.copy(maxConnections = profile.ble.maxConnections)
+        )
+    }
+
     fun resolve(
         batteryLevel: Int,
         isCharging: Boolean,

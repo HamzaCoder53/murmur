@@ -1,3 +1,4 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -33,11 +34,11 @@ android {
     if (releaseUiTests) testBuildType = "release"
 
     defaultConfig {
-        applicationId = "com.bitchat.droid"
+        applicationId = "xfuturehb.murmur"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 42
-        versionName = "2.2.0"
+        versionCode = 1
+        versionName = "0.1.0"
         buildConfigField(
             "String",
             "GITHUB_RELEASE_CERT_SHA256",
@@ -205,6 +206,9 @@ dependencies {
     // Google Play Services Location
     implementation(libs.gms.location)
 
+    // Phone-watch tunnel (Wearable Data Layer)
+    implementation(libs.gms.wearable)
+
     // Security preferences
     implementation(libs.androidx.security.crypto)
     
@@ -229,4 +233,28 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
         "robolectric.dependency.repo.url",
         "https://repo.maven.apache.org/maven2"
     )
+}
+
+// Murmur release signing. The upload key lives outside the repository, in the user's home
+// directory; without it release builds stay unsigned, exactly as upstream builds them.
+val murmurSigning = Properties().apply {
+    val file = File(System.getProperty("user.home"), ".murmur/keystore.properties")
+    if (file.isFile) file.inputStream().use { load(it) }
+}
+if (murmurSigning.getProperty("storeFile") != null && !releaseUiTests) {
+    android {
+        signingConfigs {
+            create("upload") {
+                storeFile = file(murmurSigning.getProperty("storeFile"))
+                storePassword = murmurSigning.getProperty("storePassword")
+                keyAlias = murmurSigning.getProperty("keyAlias")
+                keyPassword = murmurSigning.getProperty("keyPassword")
+            }
+        }
+        buildTypes {
+            getByName("release") {
+                signingConfig = signingConfigs.getByName("upload")
+            }
+        }
+    }
 }

@@ -10,7 +10,7 @@ import sys
 import tempfile
 import time
 
-PACKAGE = "com.bitchat.droid.composerTest"
+PACKAGE = "xfuturehb.murmur.composerTest"
 CLASSES = ",".join("com.bitchat.android.ui." + name for name in (
     "ComposerPanicInstrumentedTest", "ComposerEdgeCasesInstrumentedTest", "ComposerOutcomeInstrumentedTest"))
 

@@ -44,7 +44,7 @@ RESULTS_DIR = "cache/testhook/results"
 DEVICE_TMP_DIR = "/data/local/tmp/meshlab"
 APP_FIXTURE_DIR = f"/data/data/{APPLICATION_ID}/cache/fixtures"
 
-WATCH_APPLICATION_ID = "com.bitchat.watch"
+WATCH_APPLICATION_ID = "xfuturehb.murmur"
 WATCH_TEST_HOOK_ACTION = "com.bitchat.watch.TEST_HOOK"
 WATCH_TEST_HOOK_COMPONENT = f"{WATCH_APPLICATION_ID}/com.bitchat.watch.testhook.WearTestHookReceiver"
 

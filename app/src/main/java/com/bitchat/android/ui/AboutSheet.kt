@@ -296,6 +296,9 @@ private fun SettingsToggleRow(
     }
 }
 
+/** Offline APK sharing (hotspot / share sheet). Off in Murmur; see the note at its use. */
+private const val APP_SHARING_ENABLED = false
+
 /**
  * Apple-like About/Settings Sheet with high-quality design
  * Professional UX optimized for checkout scenarios
@@ -629,6 +632,9 @@ fun AboutSheet(
                                         } else null
                                     )
 
+                                    // Murmur: upstream's offline app sharing fetches and verifies the official
+                                    // BitChat APK, which is the wrong app to hand out from this fork.
+                                    if (APP_SHARING_ENABLED) {
                                     HorizontalDivider(
                                         modifier = Modifier.padding(start = 56.dp),
                                         color = colorScheme.outline.copy(alpha = 0.12f)
@@ -1097,6 +1103,7 @@ fun AboutSheet(
                                             )
                                         }
                                     }
+                                    } // APP_SHARING_ENABLED
 
                                 }
                             }

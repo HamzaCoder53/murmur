@@ -7,7 +7,8 @@
         android:name="android.hardware.bluetooth_le"
         android:required="true" />
 
-    <!-- Bluetooth mesh only. Deliberately NO android.permission.INTERNET and no location. -->
+    <!-- Bluetooth mesh, plus a tunnel to the paired phone over the Wearable Data Layer.
+         Deliberately NO android.permission.INTERNET and no location. -->
     <uses-permission
         android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation"
@@ -19,6 +20,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Standalone rendezvous: wake at each shared scan window and stay up for its ten seconds. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <application
         android:name=".BitchatWatchApplication"
@@ -37,6 +41,10 @@
             android:name=".service.WearMeshForegroundService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <receiver
+            android:name=".rendezvous.RendezvousAlarmReceiver"
+            android:exported="false" />
 
         <activity
             android:name=".MainActivity"

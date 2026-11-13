@@ -4,17 +4,8 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Murmur mark: a flock of dots sweeping in a curl, every dot inside the 66dp safe zone so round masks never clip it. Monochrome layer for themed icons. -->
     <path
-        android:pathData="M62.186,80.777A28,28 0,1 1,80.777 62.186"
-        android:strokeColor="#FF000000"
-        android:strokeWidth="4"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M56.972,72.766A19,19 0,1 1,72.766 56.972"
-        android:strokeColor="#FF000000"
-        android:strokeWidth="4"
-        android:strokeLineCap="round" />
-    <path
-        android:fillColor="#FF000000"
-        android:pathData="M49,44H59A5,5 0,0 1,64 49V54.5A5,5 0,0 1,59 59.5H49A5,5 0,0 1,44 54.5V49A5,5 0,0 1,49 44ZM61.5,57L65.5,65.5L54,59.5Z" />
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M31.6,64a6.4,6.4 0 1,0 12.8,0a6.4,6.4 0 1,0 -12.8,0zM44.4,69a5.6,5.6 0 1,0 11.2,0a5.6,5.6 0 1,0 -11.2,0zM57.0,67a5.0,5.0 0 1,0 10.0,0a5.0,5.0 0 1,0 -10.0,0zM66.6,60a4.4,4.4 0 1,0 8.8,0a4.4,4.4 0 1,0 -8.8,0zM71.1,50a3.9,3.9 0 1,0 7.8,0a3.9,3.9 0 1,0 -7.8,0zM69.6,40a3.4,3.4 0 1,0 6.8,0a3.4,3.4 0 1,0 -6.8,0zM63.0,33a3.0,3.0 0 1,0 6.0,0a3.0,3.0 0 1,0 -6.0,0zM54.4,30a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0zM45.7,31a2.3,2.3 0 1,0 4.6,0a2.3,2.3 0 1,0 -4.6,0zM39.0,36a2.0,2.0 0 1,0 4.0,0a2.0,2.0 0 1,0 -4.0,0zM35.3,43a1.7,1.7 0 1,0 3.4,0a1.7,1.7 0 1,0 -3.4,0zM44.8,56a4.2,4.2 0 1,0 8.4,0a4.2,4.2 0 1,0 -8.4,0zM55.6,52a3.4,3.4 0 1,0 6.8,0a3.4,3.4 0 1,0 -6.8,0zM57.4,42a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0zM48.9,43a2.1,2.1 0 1,0 4.2,0a2.1,2.1 0 1,0 -4.2,0z" />
 </vector>

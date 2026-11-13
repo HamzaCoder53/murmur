@@ -634,6 +634,13 @@ class BluetoothGattClientManager(
             return
         }
 
+        if (profile.ble.scanOnMs <= 0L) {
+            // An external owner is holding the scan window closed (PowerManager.ScanWindowOverride).
+            stopScanWatchdog()
+            onScanStateChanged(false)
+            return
+        }
+
         // Duty-cycled scans are re-armed every window, so the continuous-scan watchdog would only
         // create background wakeups during intentional OFF periods.
         stopScanWatchdog()

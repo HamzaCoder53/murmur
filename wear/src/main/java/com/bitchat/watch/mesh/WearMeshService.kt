@@ -1,8 +1,18 @@
 package com.bitchat.watch.mesh
 
+import android.app.AlarmManager
 import android.bluetooth.BluetoothDevice
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.bitchat.android.crypto.EncryptionService
 import com.bitchat.android.favorites.FavoriteControlMessage
 import com.bitchat.android.mesh.BluetoothConnectionManager
@@ -10,22 +20,43 @@ import com.bitchat.android.mesh.BluetoothConnectionManagerDelegate
 import com.bitchat.android.mesh.DirectLinkAnnouncementPolicy
 import com.bitchat.android.mesh.MeshCore
 import com.bitchat.android.mesh.MeshTransport
+import com.bitchat.android.mesh.PowerManager
 import com.bitchat.android.model.RoutedPacket
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.services.AppStateStore
 import com.bitchat.android.spam.SpamFilter
 import com.bitchat.android.sync.GossipSyncManager
 import com.bitchat.android.util.AppConstants
+import com.bitchat.android.wearlink.GmsWearLinkChannel
+import com.bitchat.android.wearlink.WearLinkChannel
+import com.bitchat.android.wearlink.WearLinkContract
+import com.bitchat.android.wearlink.WearLinkTransport
+import com.bitchat.watch.link.LinkMode
+import com.bitchat.watch.link.LinkModeController
+import com.bitchat.watch.link.SwitchingTransport
+import com.bitchat.watch.rendezvous.AndroidRendezvousPlatform
+import com.bitchat.watch.rendezvous.MeshClock
+import com.bitchat.watch.rendezvous.RendezvousAlarmReceiver
+import com.bitchat.watch.rendezvous.RendezvousEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 /**
- * Watch mesh service: composes the shared BLE transport (BluetoothConnectionManager) with the
- * shared mesh coordinator (MeshCore), mirroring how the phone's Wi-Fi Aware service is built.
- * Bluetooth mesh only — no internet, no other transports.
+ * Watch mesh service: composes the shared mesh coordinator (MeshCore) with two ways of reaching
+ * the mesh and switches between them.
+ *
+ *  - Standalone: the watch's own BLE transport (BluetoothConnectionManager), scanning in
+ *    rendezvous windows while the app is in the background.
+ *  - Tethered: a tunnel through the paired phone over the Wearable Data Layer, with the watch's
+ *    own mesh radio switched off.
+ *
+ * Either way the watch keeps its own identity and keys, and declares no internet permission.
  */
 class WearMeshService private constructor(private val context: Context) {
 
@@ -33,6 +64,15 @@ class WearMeshService private constructor(private val context: Context) {
         private const val TAG = "WearMeshService"
         private val MAX_TTL: UByte = AppConstants.MESSAGE_TTL_HOPS
         private val PEER_DISCONNECT_GRACE_MS: Long = AppConstants.Mesh.PEER_DISCONNECT_GRACE_MS
+
+        private const val PREF_CLOCK_OFFSET_MS = "mesh_clock_offset_ms"
+        private const val PREF_LAST_TETHERED_MS = "last_tethered_wall_ms"
+
+        /**
+         * How long after leaving the phone the watch still trusts its own wall clock. The OS syncs
+         * time from the phone while tethered; watch crystals drift a second or two a day.
+         */
+        private const val CLOCK_TRUST_AFTER_TETHER_MS = 12 * 60 * 60_000L
 
         @Volatile
         private var instance: WearMeshService? = null
@@ -51,8 +91,56 @@ class WearMeshService private constructor(private val context: Context) {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val bleTransport = BleTransport()
+    private val linkChannel: WearLinkChannel = GmsWearLinkChannel(
+        context,
+        localCapability = WearLinkContract.CAPABILITY_WATCH_NODE,
+        remoteCapability = WearLinkContract.CAPABILITY_PHONE_RELAY
+    )
+    private val phoneLink = WearLinkTransport(serviceScope, linkChannel, defaultRoute = true)
+    private val linkModeController = LinkModeController(
+        scope = serviceScope,
+        phoneReachable = linkChannel.reachableNodes.map { it.isNotEmpty() },
+        onModeChanged = ::onLinkModeChanged
+    )
+    private val transport = SwitchingTransport(bleTransport, phoneLink) { linkModeController.mode.value }
     private val meshCore: MeshCore
     private var connectionManager: BluetoothConnectionManager
+
+    /** Whether the watch is on its own radio or tunnelling through the phone. */
+    val linkMode: StateFlow<LinkMode> get() = linkModeController.mode
+
+    val meshClock = MeshClock(
+        initialOffsetMs = prefs().getLong(PREF_CLOCK_OFFSET_MS, 0L),
+        onOffsetChanged = { prefs().edit().putLong(PREF_CLOCK_OFFSET_MS, it).apply() }
+    )
+
+    private val rendezvous = RendezvousEngine(
+        clock = meshClock,
+        platform = AndroidRendezvousPlatform(context),
+        setScanOverride = { PowerManager.getInstance(context).setScanWindowOverride(it) },
+        hasLivePeers = { connectionManager.getConnectedDeviceCount() > 0 },
+        recoveryPick = { Random.nextInt() }
+    )
+
+    val rendezvousStatus: StateFlow<RendezvousEngine.Status> get() = rendezvous.status
+
+    /** Guards radio start/stop so a mode switch cannot interleave with service start or stop. */
+    private val radioLock = Any()
+
+    @Volatile
+    private var bluetoothRunning = false
+
+    private val foregroundObserver = LifecycleEventObserver { _, event ->
+        if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_STOP) {
+            rendezvous.onForegroundChanged()
+        }
+    }
+
+    private val exactAlarmAccessReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            rendezvous.onExactWakePermissionChanged()
+        }
+    }
 
     @Volatile
     var nickname: String = loadNickname()
@@ -68,7 +156,7 @@ class WearMeshService private constructor(private val context: Context) {
         meshCore = MeshCore(
             context = context.applicationContext,
             scope = serviceScope,
-            transport = bleTransport,
+            transport = transport,
             encryptionService = encryptionService,
             myPeerID = myPeerID,
             maxTtl = MAX_TTL,
@@ -81,15 +169,23 @@ class WearMeshService private constructor(private val context: Context) {
             hooks = MeshCore.Hooks(
                 onMessageReceived = { message -> handleMessageReceived(message) },
                 onAnnounceProcessed = { routed, _ ->
-                    // Mirror the phone's BluetoothMeshService: learn the direct BLE
-                    // address↔peerID mapping from direct-link announcements.
+                    // Mirror the phone's BluetoothMeshService: learn the direct link
+                    // address↔peerID mapping from direct-link announcements. The link is either a
+                    // BLE connection or the tunnel to the paired phone.
                     DirectLinkAnnouncementPolicy.observationFor(routed, MAX_TTL)?.let { obs ->
-                        val observed = connectionManager.observePeerIfCurrent(
-                            obs.relayAddress,
-                            obs.ingressLinkID,
-                            obs.peerID
-                        )
+                        val observed = if (WearLinkContract.isLinkAddress(obs.relayAddress)) {
+                            phoneLink.bindPeer(obs.relayAddress, obs.peerID)
+                        } else {
+                            connectionManager.observePeerIfCurrent(
+                                obs.relayAddress,
+                                obs.ingressLinkID,
+                                obs.peerID
+                            )
+                        }
                         if (observed) {
+                            // A direct announce carries the neighbour's own wall clock, fresh.
+                            refreshClockTrust()
+                            meshClock.onPassiveSample(obs.peerID, routed.packet.timestamp.toLong())
                             meshCore.setDirectConnection(obs.peerID, true)
                             try {
                                 meshCore.gossipSyncManager.scheduleInitialSyncToPeer(obs.peerID, 1_000)
@@ -110,6 +206,21 @@ class WearMeshService private constructor(private val context: Context) {
         connectionManager = BluetoothConnectionManager(context, myPeerID, meshCore.fragmentManager)
         bleTransport.connectionManager = connectionManager
         wireBluetoothDelegate()
+
+        phoneLink.attachFragmentManager(meshCore.fragmentManager)
+        phoneLink.listener = object : WearLinkTransport.Listener {
+            override fun onPacket(packet: BitchatPacket, peerID: String, linkAddress: String) {
+                meshCore.processIncoming(packet, peerID, linkAddress, linkAddress)
+            }
+
+            override fun onPeerUnreachable(peerID: String) {
+                meshCore.setDirectConnection(peerID, false)
+                try { meshCore.refreshPeerList() } catch (_: Exception) { }
+            }
+        }
+        Handler(Looper.getMainLooper()).post {
+            ProcessLifecycleOwner.get().lifecycle.addObserver(foregroundObserver)
+        }
     }
 
     private inner class BleTransport : MeshTransport {
@@ -158,11 +269,13 @@ class WearMeshService private constructor(private val context: Context) {
                         myPeerID = myPeerID
                     )
                 } catch (_: Exception) { }
+                rendezvous.onPeerContact()
                 meshCore.processIncoming(packet, peerID, device?.address, ingressLinkID)
             }
 
             override fun onDeviceConnected(device: BluetoothDevice) {
                 Log.i(TAG, "Device connected: ${device.address}")
+                rendezvous.onPeerContact()
                 serviceScope.launch {
                     delay(200)
                     meshCore.sendBroadcastAnnounce()
@@ -255,10 +368,72 @@ class WearMeshService private constructor(private val context: Context) {
     }
 
     fun startServices() {
-        if (isActive) {
-            Log.w(TAG, "Mesh already active, ignoring duplicate start")
-            return
+        synchronized(radioLock) {
+            if (isActive) {
+                // A repeat start is how callers retry once permissions or Bluetooth come back.
+                if (linkModeController.mode.value == LinkMode.STANDALONE && !bluetoothRunning) {
+                    enterStandalone()
+                } else {
+                    Log.w(TAG, "Mesh already active, ignoring duplicate start")
+                }
+                return
+            }
+            isActive = true
+            meshCore.startCore()
+            RendezvousAlarmReceiver.engine = rendezvous
+            ContextCompat.registerReceiver(
+                context,
+                exactAlarmAccessReceiver,
+                IntentFilter(AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED),
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+            // Start on the watch's own radio; the controller moves to the phone if one answers.
+            enterStandalone()
+            phoneLink.start()
+            linkModeController.start()
+            serviceScope.launch {
+                delay(500)
+                meshCore.sendBroadcastAnnounce()
+            }
+            Log.i(TAG, "Mesh services started (peerID: $myPeerID)")
         }
+    }
+
+    fun stopServices() {
+        synchronized(radioLock) {
+            if (!isActive) return
+            isActive = false
+            linkModeController.stop()
+            rendezvous.stop()
+            RendezvousAlarmReceiver.engine = null
+            try { context.unregisterReceiver(exactAlarmAccessReceiver) } catch (_: Exception) { }
+            phoneLink.stop()
+            meshCore.stopCore()
+            connectionManager.stopServices()
+            bluetoothRunning = false
+            Log.i(TAG, "Mesh services stopped")
+        }
+    }
+
+    private fun onLinkModeChanged(mode: LinkMode) {
+        synchronized(radioLock) {
+            if (!isActive) return
+            prefs().edit().putLong(PREF_LAST_TETHERED_MS, System.currentTimeMillis()).apply()
+            when (mode) {
+                LinkMode.TETHERED -> enterTethered()
+                LinkMode.STANDALONE -> enterStandalone()
+            }
+            refreshClockTrust()
+        }
+        Log.i(TAG, "Link mode: $mode")
+        serviceScope.launch {
+            delay(300)
+            meshCore.sendBroadcastAnnounce()
+        }
+    }
+
+    /** Bring up the watch's own BLE mesh and hand background scanning to the rendezvous engine. */
+    private fun enterStandalone() {
         if (!connectionManager.isReusable()) {
             // A previous stopServices() cancelled the manager's coroutine scope; the shared
             // API marks such managers single-use, so build a fresh one instead of starting
@@ -268,26 +443,32 @@ class WearMeshService private constructor(private val context: Context) {
             bleTransport.connectionManager = connectionManager
             wireBluetoothDelegate()
         }
-        val started = connectionManager.startServices()
-        if (started) {
-            isActive = true
-            meshCore.startCore()
-            serviceScope.launch {
-                delay(500)
-                meshCore.sendBroadcastAnnounce()
-            }
-            Log.i(TAG, "Mesh services started (peerID: $myPeerID)")
+        bluetoothRunning = connectionManager.startServices()
+        if (bluetoothRunning) {
+            rendezvous.start()
         } else {
             Log.e(TAG, "Failed to start Bluetooth services (permissions? BT off?)")
         }
     }
 
-    fun stopServices() {
-        if (!isActive) return
-        isActive = false
-        meshCore.stopCore()
-        connectionManager.stopServices()
-        Log.i(TAG, "Mesh services stopped")
+    /** The phone carries the mesh now: stop scanning and advertising on the watch itself. */
+    private fun enterTethered() {
+        rendezvous.stop()
+        if (bluetoothRunning) {
+            // disableTransport keeps the manager reusable for the next standalone period.
+            connectionManager.disableTransport()
+            bluetoothRunning = false
+        }
+    }
+
+    /** The watch's wall clock is trusted while tethered and for a while after. */
+    private fun refreshClockTrust() {
+        val lastTethered = prefs().getLong(PREF_LAST_TETHERED_MS, 0L)
+        val trusted = linkModeController.mode.value == LinkMode.TETHERED ||
+            System.currentTimeMillis() - lastTethered < CLOCK_TRUST_AFTER_TETHER_MS
+        meshClock.setSelfRank(
+            if (trusted) MeshClock.RANK_DISCIPLINED else MeshClock.RANK_FREE_RUNNING
+        )
     }
 
     fun isRunning(): Boolean = isActive
@@ -428,9 +609,9 @@ class WearMeshService private constructor(private val context: Context) {
     fun getPeerNickname(peerID: String): String? = meshCore.getPeerNickname(peerID)
 
     fun getDebugStatus(): String = meshCore.getDebugStatus(
-        transportInfo = connectionManager.getDebugInfo(),
-        deviceMap = connectionManager.addressPeerMap.toMap(),
-        title = "Wear BLE Mesh Debug Status"
+        transportInfo = transport.getTransportDebugInfo(),
+        deviceMap = transport.getDeviceAddressToPeerMapping(),
+        title = "Wear Mesh Debug Status"
     )
 
     private fun prefs() = context.getSharedPreferences("bitchat_watch_prefs", Context.MODE_PRIVATE)

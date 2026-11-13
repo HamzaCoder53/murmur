@@ -1,3 +1,4 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -12,15 +13,15 @@ android {
     buildToolsVersion = libs.versions.buildTools.get()
 
     defaultConfig {
-        applicationId = "com.bitchat.droid"
+        applicationId = "xfuturehb.murmur"
         minSdk = 33 // Wear OS 4 (Pixel Watch 1+): the S+ Bluetooth permissions the app
         // declares only exist from API 31, and API 30 would additionally require location
         // for BLE scan results, which the app deliberately refuses.
         targetSdk = libs.versions.targetSdk.get().toInt()
         // Wear releases use a separate high range because Play requires every artifact in
         // one application ID to have a unique version code across all form factors.
-        versionCode = 1_000_000_008
-        versionName = "0.1.7"
+        versionCode = 1_000_000_001
+        versionName = "0.1.0"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -117,6 +118,11 @@ val sharedSourceIncludes = listOf(
     "com/bitchat/android/util/ByteArrayExtensions.kt",
     "com/bitchat/android/util/ByteArrayWrapper.kt",
     "com/bitchat/android/util/BinaryEncodingUtils.kt",
+    // Phone-watch tunnel: one contract, channel and transport shared by both ends.
+    "com/bitchat/android/wearlink/WearLinkContract.kt",
+    "com/bitchat/android/wearlink/WearLinkChannel.kt",
+    "com/bitchat/android/wearlink/GmsWearLinkChannel.kt",
+    "com/bitchat/android/wearlink/WearLinkTransport.kt",
 )
 val sharedSourceExcludes = listOf(
     "com/bitchat/android/model/FileSharingManager.kt",
@@ -215,7 +221,34 @@ dependencies {
     // Security preferences (Noise identity persistence)
     implementation(libs.androidx.security.crypto)
 
+    // Phone-watch tunnel (Wearable Data Layer). Needs no INTERNET permission.
+    implementation(libs.gms.wearable)
+
     // Testing
     testImplementation(libs.bundles.testing)
     debugImplementation(libs.androidx.compose.ui.tooling)
+}
+
+// Murmur release signing. The upload key lives outside the repository, in the user's home
+// directory; without it release builds stay unsigned, exactly as upstream builds them.
+val murmurSigning = Properties().apply {
+    val file = File(System.getProperty("user.home"), ".murmur/keystore.properties")
+    if (file.isFile) file.inputStream().use { load(it) }
+}
+if (murmurSigning.getProperty("storeFile") != null) {
+    android {
+        signingConfigs {
+            create("upload") {
+                storeFile = file(murmurSigning.getProperty("storeFile"))
+                storePassword = murmurSigning.getProperty("storePassword")
+                keyAlias = murmurSigning.getProperty("keyAlias")
+                keyPassword = murmurSigning.getProperty("keyPassword")
+            }
+        }
+        buildTypes {
+            getByName("release") {
+                signingConfig = signingConfigs.getByName("upload")
+            }
+        }
+    }
 }

@@ -3,6 +3,7 @@ package com.bitchat.android.nostr
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.bitchat.android.services.AppStateStore
+import com.bitchat.android.spam.SpamFilter
 import com.bitchat.android.ui.ChatState
 import com.bitchat.android.ui.DataManager
 import com.bitchat.android.ui.sectionGeohashPeople
@@ -46,6 +47,7 @@ class GeohashParticipantTrackingTest {
     @Before
     fun setUp() {
         AppStateStore.clear()
+        SpamFilter.shared.reset()
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         state = ChatState(scope)
         dataManager = DataManager(application)
@@ -59,6 +61,7 @@ class GeohashParticipantTrackingTest {
     fun tearDown() {
         scope.cancel()
         dataManager.removeGeohashBlockedUser(identity.publicKeyHex)
+        SpamFilter.shared.reset()
         AppStateStore.clear()
     }
 

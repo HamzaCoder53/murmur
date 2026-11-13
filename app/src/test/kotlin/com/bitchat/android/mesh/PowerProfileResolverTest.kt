@@ -89,6 +89,43 @@ class PowerProfileResolverTest {
         assertEquals(PowerManager.BatteryBand.CRITICAL, resolve(10, true).batteryBand)
     }
 
+    @Test
+    fun `no scan window override leaves the resolved profile untouched`() {
+        val profile = resolve(battery = 80, background = true)
+
+        assertTrue(PowerProfileResolver.withScanWindowOverride(profile, null) === profile)
+    }
+
+    @Test
+    fun `open scan window override scans continuously and keeps everything else`() {
+        val profile = resolve(battery = 80, background = true)
+
+        val open = PowerProfileResolver.withScanWindowOverride(
+            profile,
+            PowerManager.ScanWindowOverride.OPEN
+        )
+
+        assertTrue(open.ble.continuousScan)
+        assertEquals(profile.ble.maxConnections, open.ble.maxConnections)
+        assertEquals(profile.mode, open.mode)
+        assertEquals(profile.meshAnnouncementIntervalMs, open.meshAnnouncementIntervalMs)
+    }
+
+    @Test
+    fun `closed scan window override keeps the scanner off`() {
+        val profile = resolve(battery = 80, background = true, peers = true)
+
+        val closed = PowerProfileResolver.withScanWindowOverride(
+            profile,
+            PowerManager.ScanWindowOverride.CLOSED
+        )
+
+        assertEquals(0L, closed.ble.scanOnMs)
+        assertFalse(closed.ble.continuousScan)
+        assertEquals(profile.ble.maxConnections, closed.ble.maxConnections)
+        assertEquals(profile.mode, closed.mode)
+    }
+
     private fun resolve(
         battery: Int,
         background: Boolean,

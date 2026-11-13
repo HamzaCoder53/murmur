@@ -96,7 +96,7 @@ fun ChatMenuScreen(onQuit: () -> Unit) {
             item {
                 ListHeader {
                     Text(
-                        text = "bitchat",
+                        text = "Murmur",
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
                     )
@@ -162,7 +162,7 @@ fun ChatMenuScreen(onQuit: () -> Unit) {
                 modifier = Modifier.size(32.dp),
             )
         },
-        title = { Text("Quit bitchat?") },
+        title = { Text("Quit Murmur?") },
         confirmButton = {
             // Quitting tears the mesh down, so confirm carries the error color, not primary.
             AlertDialogDefaults.ConfirmButton(

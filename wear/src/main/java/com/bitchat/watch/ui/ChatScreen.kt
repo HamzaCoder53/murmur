@@ -163,7 +163,7 @@ private fun ChatHeader(
     ) {
         if (unreadDms == 0) {
             Text(
-                text = "bitchat",
+                text = "Murmur",
                 style = MaterialTheme.typography.titleSmall,
                 fontSize = titleSize.sp,
                 lineHeight = (titleSize * 1.3f).sp,

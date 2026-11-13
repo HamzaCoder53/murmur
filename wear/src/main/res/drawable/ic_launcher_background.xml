@@ -5,16 +5,16 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Near-black with a faint green glow, matching the app's OLED surfaces. -->
+    <!-- Deep dusk blue fading to black, the sky a murmuration is seen against. -->
     <path android:pathData="M0,0h108v108h-108z">
         <aapt:attr name="android:fillColor">
             <gradient
                 android:type="radial"
                 android:centerX="54"
-                android:centerY="46"
-                android:gradientRadius="46">
-                <item android:offset="0" android:color="#FF0F1A10" />
-                <item android:offset="1" android:color="#FF000000" />
+                android:centerY="50"
+                android:gradientRadius="60">
+                <item android:offset="0" android:color="#FF16233A" />
+                <item android:offset="1" android:color="#FF05080F" />
             </gradient>
         </aapt:attr>
     </path>

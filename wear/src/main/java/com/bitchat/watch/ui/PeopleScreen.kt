@@ -119,6 +119,7 @@ fun PeopleScreen(onOpenDm: (String) -> Unit, onEditNickname: () -> Unit) {
                     onClick = { onOpenDm(peerID) }
                 )
             }
+            linkStatusSection(mesh)
         }
     }
 }
