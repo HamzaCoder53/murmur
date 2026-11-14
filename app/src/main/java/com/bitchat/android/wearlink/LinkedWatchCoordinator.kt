@@ -165,10 +165,10 @@ class LinkedWatchCoordinator(
         val notification = NotificationCompat.Builder(appContext, NOTIFICATION_CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Link $name?")
-            .setContentText("It will use this phone's Murmur identity and see your chats.")
+            .setContentText("It will use this phone's Skein identity and see your chats.")
             .setStyle(
                 NotificationCompat.BigTextStyle().bigText(
-                    "$name wants to use this phone's Murmur identity. It will be able to read " +
+                    "$name wants to use this phone's Skein identity. It will be able to read " +
                         "and send your messages, including when away from the phone. Only allow " +
                         "this for your own watch."
                 )

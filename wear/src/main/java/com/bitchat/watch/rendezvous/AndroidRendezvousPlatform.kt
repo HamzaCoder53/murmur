@@ -25,7 +25,7 @@ class AndroidRendezvousPlatform(context: Context) : RendezvousEngine.Platform {
 
     private companion object {
         const val TAG = "RendezvousPlatform"
-        const val WAKE_LOCK_TAG = "Murmur:RendezvousWindow"
+        const val WAKE_LOCK_TAG = "Skein:RendezvousWindow"
         const val REQUEST_CODE = 5501
     }
 

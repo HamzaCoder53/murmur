@@ -133,7 +133,7 @@ class MurmurTileService : TileService() {
             .build()
         val column = LayoutElementBuilders.Column.Builder()
             .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
-            .addContent(text("Murmur", 14f, GREEN, bold = true))
+            .addContent(text("Skein", 14f, GREEN, bold = true))
             .addContent(spacer(6f))
             .addContent(text(if (state.unread > 99) "99+" else state.unread.toString(), 40f, WHITE, bold = true))
             .addContent(text(if (state.unread == 1) "new message" else "new messages", 13f, GREY))
@@ -160,9 +160,9 @@ class MurmurComplicationService : SuspendingComplicationDataSourceService() {
     private fun build(state: GlanceState): ComplicationData =
         ShortTextComplicationData.Builder(
             text = PlainComplicationText.Builder(if (state.unread > 99) "99+" else state.unread.toString()).build(),
-            contentDescription = PlainComplicationText.Builder("Murmur: ${state.unreadLabel}").build()
+            contentDescription = PlainComplicationText.Builder("Skein: ${state.unreadLabel}").build()
         )
-            .setTitle(PlainComplicationText.Builder("Murmur").build())
+            .setTitle(PlainComplicationText.Builder("Skein").build())
             .setTapAction(openAppIntent(this))
             .build()
 }

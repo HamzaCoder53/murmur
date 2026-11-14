@@ -56,7 +56,7 @@ import com.bitchat.watch.ui.theme.LocalBitchatPalette
 @Composable
 fun NicknameSetupScreen(
     initialNickname: String,
-    title: String = "Murmur",
+    title: String = "Skein",
     subtitle: String = "Pick a nickname",
     confirmLabel: String = "Join",
     autoFocus: Boolean = false,

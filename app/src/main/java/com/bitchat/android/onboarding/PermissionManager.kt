@@ -255,10 +255,10 @@ class PermissionManager(private val context: Context) {
         categories.add(
             PermissionCategory(
                 type = PermissionType.NEARBY_DEVICES,
-                description = "Required to discover Murmur users via Bluetooth",
+                description = "Required to discover Skein users via Bluetooth",
                 permissions = bluetoothPermissions,
                 isGranted = bluetoothPermissions.all { isPermissionGranted(it) },
-                systemDescription = "Allow Murmur to connect to nearby devices"
+                systemDescription = "Allow Skein to connect to nearby devices"
             )
         )
 
@@ -271,10 +271,10 @@ class PermissionManager(private val context: Context) {
         categories.add(
             PermissionCategory(
                 type = PermissionType.PRECISE_LOCATION,
-                description = "Required by Android to discover nearby Murmur users via Bluetooth",
+                description = "Required by Android to discover nearby Skein users via Bluetooth",
                 permissions = locationPermissions,
                 isGranted = locationPermissions.all { isPermissionGranted(it) },
-                systemDescription = "Murmur needs this to scan for nearby devices"
+                systemDescription = "Skein needs this to scan for nearby devices"
             )
         )
 
@@ -284,10 +284,10 @@ class PermissionManager(private val context: Context) {
             categories.add(
                 PermissionCategory(
                     type = PermissionType.WIFI_AWARE,
-                    description = "Enable Wi‑Fi Aware to discover and connect to nearby Murmur users over Wi‑Fi.",
+                    description = "Enable Wi‑Fi Aware to discover and connect to nearby Skein users over Wi‑Fi.",
                     permissions = wifiAwarePermissions,
                     isGranted = wifiAwarePermissions.all { isPermissionGranted(it) },
-                    systemDescription = "Allow Murmur to discover nearby Wi‑Fi devices"
+                    systemDescription = "Allow Skein to discover nearby Wi‑Fi devices"
                 )
             )
         }
@@ -313,7 +313,7 @@ class PermissionManager(private val context: Context) {
                     description = "Receive notifications when you receive private messages",
                     permissions = listOf(Manifest.permission.POST_NOTIFICATIONS),
                     isGranted = isPermissionGranted(Manifest.permission.POST_NOTIFICATIONS),
-                    systemDescription = "Allow Murmur to send you notifications"
+                    systemDescription = "Allow Skein to send you notifications"
                 )
             )
         }
@@ -325,10 +325,10 @@ class PermissionManager(private val context: Context) {
             categories.add(
                 PermissionCategory(
                     type = PermissionType.BATTERY_OPTIMIZATION,
-                    description = "Disable battery optimization to ensure Murmur runs reliably in the background and maintains mesh network connections",
+                    description = "Disable battery optimization to ensure Skein runs reliably in the background and maintains mesh network connections",
                     permissions = listOf("BATTERY_OPTIMIZATION"), // Custom identifier
                     isGranted = isBatteryOptimizationDisabled(),
-                    systemDescription = "Allow Murmur to run without battery restrictions"
+                    systemDescription = "Allow Skein to run without battery restrictions"
                 )
             )
         }

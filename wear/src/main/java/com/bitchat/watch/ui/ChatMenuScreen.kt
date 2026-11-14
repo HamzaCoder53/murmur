@@ -108,7 +108,7 @@ fun ChatMenuScreen(onQuit: () -> Unit) {
             item {
                 ListHeader {
                     Text(
-                        text = "Murmur",
+                        text = "Skein",
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
                     )
@@ -264,7 +264,7 @@ fun ChatMenuScreen(onQuit: () -> Unit) {
                 modifier = Modifier.size(32.dp),
             )
         },
-        title = { Text("Quit Murmur?") },
+        title = { Text("Quit Skein?") },
         confirmButton = {
             // Quitting tears the mesh down, so confirm carries the error color, not primary.
             AlertDialogDefaults.ConfirmButton(
@@ -302,11 +302,11 @@ private fun LinkPhoneButton(
         state == com.bitchat.watch.link.LinkedPhoneClient.State.RESTARTING
     val detail = when (state) {
         com.bitchat.watch.link.LinkedPhoneClient.State.NOT_LINKED -> "Share phone's identity"
-        com.bitchat.watch.link.LinkedPhoneClient.State.NO_PHONE -> "Open Murmur on phone"
+        com.bitchat.watch.link.LinkedPhoneClient.State.NO_PHONE -> "Open Skein on phone"
         com.bitchat.watch.link.LinkedPhoneClient.State.REQUESTING -> "Confirm on phone"
         com.bitchat.watch.link.LinkedPhoneClient.State.DENIED -> "Not allowed on phone"
         com.bitchat.watch.link.LinkedPhoneClient.State.LINKED -> "Same identity as phone"
-        com.bitchat.watch.link.LinkedPhoneClient.State.RESTARTING -> "Restarting Murmur"
+        com.bitchat.watch.link.LinkedPhoneClient.State.RESTARTING -> "Restarting Skein"
     }
     FilledTonalButton(
         onClick = { if (linked) onUnlink() else onLink() },

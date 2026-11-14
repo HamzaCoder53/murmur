@@ -215,11 +215,11 @@ class OnboardingCoordinator(
         
         if (deniedCritical.isNotEmpty()) {
             val message = buildString {
-                append("Critical permissions were denied. Murmur requires these permissions to function:\n")
+                append("Critical permissions were denied. Skein requires these permissions to function:\n")
                 deniedCritical.keys.forEach { permission ->
                     append("- ${getPermissionDisplayName(permission)}\n")
                 }
-                append("\nPlease grant these permissions in Settings to use Murmur.")
+                append("\nPlease grant these permissions in Settings to use Skein.")
             }
             
             Log.e(TAG, "Critical permissions denied: $deniedCritical")

@@ -238,7 +238,7 @@ class WatchNostrClient(
     /** The periodic alarm fired. */
     fun onAlarm() {
         if (!active) return
-        val wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Murmur:InternetCheck")
+        val wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Skein:InternetCheck")
         wakeLock.acquire(FETCH_TIMEOUT_MS + NETWORK_TIMEOUT_MS + 5_000L)
         scope.launch {
             try {

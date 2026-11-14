@@ -671,7 +671,7 @@ fun PermissionRequestScreen(onGranted: () -> Unit) {
         }
     ) {
         formHeader(
-            title = "Murmur",
+            title = "Skein",
             body = "Mesh chat over Bluetooth",
             icon = Icons.Filled.Bluetooth,
         )

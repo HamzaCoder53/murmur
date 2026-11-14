@@ -149,7 +149,7 @@
         <activity
             android:name=".hotspot.HotspotActivity"
             android:exported="false"
-            android:label="Share Murmur"
+            android:label="Share Skein"
             android:theme="@style/Theme.BitchatAndroid"
             android:launchMode="singleTop" />
         <receiver

@@ -1,21 +1,21 @@
-# Murmur
+# Skein
 
-Murmur is a modified fork of [bitchat-android](https://github.com/permissionlesstech/bitchat-android),
+Skein is a modified fork of [bitchat-android](https://github.com/permissionlesstech/bitchat-android),
 changed in November 2026 and distributed under the same GPL-3.0 license (see `LICENSE.md`).
-It keeps Bitchat's wire protocol, so Murmur phones and watches talk to stock Bitchat clients.
+It keeps Bitchat's wire protocol, so Skein phones and watches talk to stock Bitchat clients.
 
 What this fork changes:
 
 - **Name and application ID** (`xfuturehb.murmur`) for both the phone and Wear OS apps, so it
   installs alongside the official app. Kotlin packages remain `com.bitchat.*`.
-- **Phone-watch tunnel.** A watch paired to a phone running Murmur switches its own Bluetooth mesh
+- **Phone-watch tunnel.** A watch paired to a phone running Skein switches its own Bluetooth mesh
   radio off and sends its packets through the phone over the Wearable Data Layer. The watch keeps
   its own identity and keys.
 - **Standalone rendezvous.** Away from its phone, the watch advertises continuously at low power
   and scans in a ten-second window around each minute boundary, instead of on an unaligned timer.
 - Offline APK sharing is disabled, because it distributes the upstream APK.
 
-Murmur is not affiliated with or endorsed by the Bitchat project. The upstream README follows.
+Skein is not affiliated with or endorsed by the Bitchat project. The upstream README follows.
 
 ---
 
