@@ -60,17 +60,19 @@ class WearLinkTransportTest {
     private val phoneLinkAddress = WearLinkContract.linkAddress("phone-node")
     private val watchLinkAddress = WearLinkContract.linkAddress("watch-node")
 
+    private var clockMs = 1_000_000L
+
     private fun TestScope.linkedPair(): Pair<WearLinkTransport, WearLinkTransport> {
         watchChannel.peer = phoneChannel
         phoneChannel.peer = watchChannel
         watchChannel.reachableNodes.value = setOf("phone-node")
         phoneChannel.reachableNodes.value = setOf("watch-node")
-        val watch = WearLinkTransport(backgroundScope, watchChannel, defaultRoute = true).apply {
+        val watch = WearLinkTransport(backgroundScope, watchChannel, defaultRoute = true, now = { clockMs }).apply {
             attachFragmentManager(FragmentManager())
             listener = watchSide
             start()
         }
-        val phone = WearLinkTransport(backgroundScope, phoneChannel, defaultRoute = false).apply {
+        val phone = WearLinkTransport(backgroundScope, phoneChannel, defaultRoute = false, now = { clockMs }).apply {
             attachFragmentManager(FragmentManager())
             listener = phoneSide
             start()
@@ -193,6 +195,35 @@ class WearLinkTransportTest {
             )
         )
         assertEquals(1, watchSide.packets.size)
+    }
+
+    @Test
+    fun `a node heard from counts as live before the reachability check catches up`() = runTest {
+        val (_, phone) = linkedPair()
+        phoneChannel.reachableNodes.value = emptySet()
+        runCurrent()
+
+        // The watch speaks first over a link the phone does not yet see as reachable.
+        phoneChannel.onMessage?.invoke("watch-node", packet().toBinaryData()!!)
+
+        assertTrue(phone.bindPeer(watchLinkAddress, watchPeer))
+        assertTrue(phone.sendPacketToPeer(watchPeer, packet(sender = phonePeer)))
+    }
+
+    @Test
+    fun `a node that only went quiet is unbound once it stops being fresh`() = runTest {
+        val (_, phone) = linkedPair()
+        phoneChannel.reachableNodes.value = emptySet()
+        runCurrent()
+        phoneChannel.onMessage?.invoke("watch-node", packet().toBinaryData()!!)
+        phone.bindPeer(watchLinkAddress, watchPeer)
+
+        clockMs += WearLinkTransport.HEARD_FRESH_MS + 1
+        advanceTimeBy(WearLinkTransport.HEARD_FRESH_MS)
+        runCurrent()
+
+        assertEquals(listOf(watchPeer), phoneSide.unreachable)
+        assertFalse(phone.sendPacketToPeer(watchPeer, packet(sender = phonePeer)))
     }
 
     @Test

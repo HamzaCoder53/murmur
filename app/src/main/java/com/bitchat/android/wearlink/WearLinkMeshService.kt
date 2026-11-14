@@ -207,6 +207,8 @@ class WearLinkMeshService(
                 if (appeared.isNotEmpty()) {
                     delay(300)
                     meshCore.sendBroadcastAnnounce()
+                    // Catch up on public messages sent while the watch was away.
+                    try { meshCore.gossipSyncManager.scheduleInitialSync(1_500) } catch (_: Exception) { }
                 }
             }
         }

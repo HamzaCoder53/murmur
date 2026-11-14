@@ -439,6 +439,9 @@ class WearMeshService private constructor(private val context: Context) {
             delay(300)
             meshCore.sendBroadcastAnnounce()
         }
+        // Catch up on public messages either side sent while the link was down, rather than
+        // waiting for the next periodic sync.
+        try { meshCore.gossipSyncManager.scheduleInitialSync(1_500) } catch (_: Exception) { }
     }
 
     /** Bring up the watch's own BLE mesh and hand background scanning to the rendezvous engine. */

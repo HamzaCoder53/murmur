@@ -9,6 +9,7 @@ import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.util.toHexString
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
@@ -22,12 +23,23 @@ import java.util.concurrent.ConcurrentHashMap
 class WearLinkTransport(
     private val scope: CoroutineScope,
     private val channel: WearLinkChannel,
-    private val defaultRoute: Boolean
+    private val defaultRoute: Boolean,
+    private val now: () -> Long = System::currentTimeMillis
 ) : MeshTransport {
 
-    private companion object {
-        const val TAG = "WearLinkTransport"
+    companion object {
+        private const val TAG = "WearLinkTransport"
+
+        /**
+         * A node that sent us something this recently is live, whatever the system's reachability
+         * check says. That check lags a reconnection by up to its poll interval, and traffic sent
+         * in that gap (announcements, catch-up sync) would otherwise be dropped.
+         */
+        const val HEARD_FRESH_MS = 30_000L
     }
+
+    /** nodeId -> wall time of the last message received from it. */
+    private val lastHeard = ConcurrentHashMap<String, Long>()
 
     /** Receives every packet that arrives over the tunnel. */
     interface Listener {
@@ -49,10 +61,18 @@ class WearLinkTransport(
     private val peerByLink = ConcurrentHashMap<String, String>()
 
     private var nodeWatcher: Job? = null
+    private var freshnessWatcher: Job? = null
 
     val reachableNodes get() = channel.reachableNodes
 
-    val isLinked: Boolean get() = channel.reachableNodes.value.isNotEmpty()
+    val isLinked: Boolean get() = liveNodes().isNotEmpty()
+
+    /** Nodes the system reports reachable, plus nodes heard from within [HEARD_FRESH_MS]. */
+    fun liveNodes(): Set<String> {
+        val cutoff = now() - HEARD_FRESH_MS
+        val heard = lastHeard.filterValues { it >= cutoff }.keys
+        return channel.reachableNodes.value + heard
+    }
 
     /** MeshCore owns the fragment manager but needs its transport first, so attach it afterwards. */
     fun attachFragmentManager(fragmentManager: FragmentManager) {
@@ -67,27 +87,39 @@ class WearLinkTransport(
                 channel.reachableNodes.collect { nodes -> dropUnreachableBindings(nodes) }
             }
         }
+        if (freshnessWatcher == null) {
+            // A binding kept alive only by recent traffic has to be re-checked once that goes quiet.
+            freshnessWatcher = scope.launch {
+                while (true) {
+                    delay(HEARD_FRESH_MS / 2)
+                    dropUnreachableBindings(channel.reachableNodes.value)
+                }
+            }
+        }
     }
 
     fun stop() {
         nodeWatcher?.cancel()
         nodeWatcher = null
+        freshnessWatcher?.cancel()
+        freshnessWatcher = null
         channel.stop()
         channel.onMessage = null
+        lastHeard.clear()
         dropUnreachableBindings(emptySet())
     }
 
     /** Record that [peerID] is the device directly on the other end of [linkAddress]. */
     fun bindPeer(linkAddress: String, peerID: String): Boolean {
         if (!WearLinkContract.isLinkAddress(linkAddress)) return false
-        if (WearLinkContract.nodeIdOf(linkAddress) !in channel.reachableNodes.value) return false
+        if (WearLinkContract.nodeIdOf(linkAddress) !in liveNodes()) return false
         peerByLink[linkAddress] = peerID
         return true
     }
 
     override fun broadcastPacket(routed: RoutedPacket): Boolean {
         // Never hand a packet back to the link it arrived on.
-        val targets = channel.reachableNodes.value.filter {
+        val targets = liveNodes().filter {
             WearLinkContract.linkAddress(it) != routed.relayAddress
         }
         return sendTo(targets, routed)
@@ -97,7 +129,7 @@ class WearLinkTransport(
         val bound = peerByLink.entries.firstOrNull { it.value == peerID }?.key
         val targets = when {
             bound != null -> listOf(WearLinkContract.nodeIdOf(bound))
-            defaultRoute -> channel.reachableNodes.value.toList()
+            defaultRoute -> liveNodes().toList()
             else -> emptyList()
         }
         return sendTo(targets, RoutedPacket(packet))
@@ -110,7 +142,7 @@ class WearLinkTransport(
     ): Boolean {
         if (!WearLinkContract.isLinkAddress(relayAddress)) return false
         val nodeId = WearLinkContract.nodeIdOf(relayAddress)
-        if (nodeId !in channel.reachableNodes.value) return false
+        if (nodeId !in liveNodes()) return false
         return sendTo(listOf(nodeId), RoutedPacket(packet))
     }
 
@@ -143,11 +175,15 @@ class WearLinkTransport(
             Log.d(TAG, "Dropped undecodable tunnel message (${data.size} bytes)")
             return
         }
+        lastHeard[nodeId] = now()
         val peerID = packet.senderID.toHexString().take(16)
         listener?.onPacket(packet, peerID, WearLinkContract.linkAddress(nodeId))
     }
 
-    private fun dropUnreachableBindings(reachable: Set<String>) {
+    private fun dropUnreachableBindings(reachableNow: Set<String>) {
+        // Keep a node that is still talking to us even if the reachability check has not caught up.
+        val cutoff = now() - HEARD_FRESH_MS
+        val reachable = reachableNow + lastHeard.filterValues { it >= cutoff }.keys
         val iterator = peerByLink.entries.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next()

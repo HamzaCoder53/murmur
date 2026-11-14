@@ -30,6 +30,9 @@ class SwitchingTransportTest {
         }
 
         override fun getDeviceAddressToPeerMapping(): Map<String, String> = addresses
+
+        override fun getDeviceAddressForPeer(peerID: String): String? =
+            addresses.entries.firstOrNull { it.value == peerID }?.key
     }
 
     private val bluetooth = RecordingTransport("BLE")
@@ -62,6 +65,17 @@ class SwitchingTransportTest {
 
         assertEquals(listOf("broadcast", "peer:peer-a"), phoneLink.calls)
         assertTrue(bluetooth.calls.isEmpty())
+    }
+
+    @Test
+    fun `a peer bound to the phone tunnel is reached through it even when standalone`() {
+        phoneLink.addresses = mapOf(WearLinkContract.linkAddress("node-1") to "phone-peer")
+
+        transport.sendPacketToPeer("phone-peer", packet)
+        transport.sendPacketToPeer("other-peer", packet)
+
+        assertEquals(listOf("peer:phone-peer"), phoneLink.calls)
+        assertEquals(listOf("peer:other-peer"), bluetooth.calls)
     }
 
     @Test

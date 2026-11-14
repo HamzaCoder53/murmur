@@ -24,8 +24,14 @@ class SwitchingTransport(
 
     override fun broadcastPacket(routed: RoutedPacket): Boolean = active.broadcastPacket(routed)
 
-    override fun sendPacketToPeer(peerID: String, packet: BitchatPacket): Boolean =
-        active.sendPacketToPeer(peerID, packet)
+    /**
+     * A peer known to be on the far end of the phone tunnel (the phone itself) is always reached
+     * through it, even in the moments before the mode switch to TETHERED lands.
+     */
+    override fun sendPacketToPeer(peerID: String, packet: BitchatPacket): Boolean {
+        val transport = if (phoneLink.getDeviceAddressForPeer(peerID) != null) phoneLink else active
+        return transport.sendPacketToPeer(peerID, packet)
+    }
 
     /** A reply to a specific link has to leave on that link, whatever the current mode. */
     override fun sendPacketToLink(
