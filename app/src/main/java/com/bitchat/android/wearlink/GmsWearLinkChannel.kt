@@ -1,6 +1,8 @@
 package com.bitchat.android.wearlink
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.CapabilityInfo
@@ -18,6 +20,13 @@ import kotlinx.coroutines.flow.asStateFlow
  * service runs and watches for [remoteCapability]. A phone that is in range but not running the
  * mesh therefore never looks like a usable relay.
  *
+ * Only directly connected (nearby) nodes count. A counterpart reachable only through Google's cloud
+ * relay is not near enough to carry local mesh traffic, and the system can keep reporting a phone
+ * as reachable that way for a long time after it is switched off.
+ *
+ * Capability callbacks are not guaranteed when a node silently disappears (powered off, out of
+ * range), so reachability is also re-checked every [POLL_INTERVAL_MS] while started.
+ *
  * Every Google Play services call is guarded: on a device without Play services the channel simply
  * never reports a reachable node.
  */
@@ -29,6 +38,16 @@ class GmsWearLinkChannel(
 
     private companion object {
         const val TAG = "GmsWearLinkChannel"
+        const val POLL_INTERVAL_MS = 15_000L
+    }
+
+    private val handler = Handler(Looper.getMainLooper())
+    private val poll = object : Runnable {
+        override fun run() {
+            if (!started) return
+            refreshReachableNodes()
+            handler.postDelayed(this, POLL_INTERVAL_MS)
+        }
     }
 
     private val appContext = context.applicationContext
@@ -71,11 +90,13 @@ class GmsWearLinkChannel(
             messageClient?.addListener(messageListener)
         }
         refreshReachableNodes()
+        handler.postDelayed(poll, POLL_INTERVAL_MS)
     }
 
     override fun stop() {
         if (!started) return
         started = false
+        handler.removeCallbacks(poll)
         guarded("stop") {
             capabilityClient?.removeLocalCapability(localCapability)
             capabilityClient?.removeListener(capabilityListener, remoteCapability)
@@ -106,7 +127,9 @@ class GmsWearLinkChannel(
         guarded("refresh") {
             client.getCapability(remoteCapability, CapabilityClient.FILTER_REACHABLE)
                 .addOnSuccessListener { info: CapabilityInfo ->
-                    if (started) _reachableNodes.value = info.nodes.mapTo(HashSet()) { it.id }
+                    if (started) {
+                        _reachableNodes.value = info.nodes.filter { it.isNearby }.mapTo(HashSet()) { it.id }
+                    }
                 }
                 .addOnFailureListener { error ->
                     Log.d(TAG, "Capability lookup failed: ${error.message}")

@@ -135,6 +135,20 @@ class WearLinkMeshService(
             override fun onPeerUnreachable(peerID: String) {
                 meshCore.setDirectConnection(peerID, false)
                 try { meshCore.refreshPeerList() } catch (_: Exception) { }
+                removeIfStillGone(peerID)
+            }
+        }
+    }
+
+    /**
+     * A watch that drops off the tunnel is removed after the same grace period a Bluetooth
+     * disconnect gets, unless it reconnects first. Without this it lingers in the peer list.
+     */
+    private fun removeIfStillGone(peerID: String) {
+        serviceScope.launch {
+            delay(AppConstants.Mesh.PEER_DISCONNECT_GRACE_MS)
+            if (transport.getDeviceAddressForPeer(peerID) == null) {
+                try { meshCore.removePeer(peerID) } catch (_: Exception) { }
             }
         }
     }

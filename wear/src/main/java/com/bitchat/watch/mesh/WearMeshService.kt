@@ -216,6 +216,15 @@ class WearMeshService private constructor(private val context: Context) {
             override fun onPeerUnreachable(peerID: String) {
                 meshCore.setDirectConnection(peerID, false)
                 try { meshCore.refreshPeerList() } catch (_: Exception) { }
+                // Same grace as a Bluetooth disconnect: remove the phone unless it comes back.
+                serviceScope.launch {
+                    delay(PEER_DISCONNECT_GRACE_MS)
+                    val linkBack = phoneLink.getDeviceAddressForPeer(peerID) != null ||
+                        connectionManager.addressPeerMap.containsValue(peerID)
+                    if (!linkBack) {
+                        try { meshCore.removePeer(peerID) } catch (_: Exception) { }
+                    }
+                }
             }
         }
         Handler(Looper.getMainLooper()).post {
