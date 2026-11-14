@@ -63,6 +63,26 @@ class GmsWearLinkChannel(
     override var onMessage: ((nodeId: String, data: ByteArray) -> Unit)? = null
 
     @Volatile
+    private var controlListener: ((nodeId: String, path: String, data: ByteArray) -> Unit)? = null
+
+    override fun setControlListener(listener: ((nodeId: String, path: String, data: ByteArray) -> Unit)?) {
+        controlListener = listener
+    }
+
+    override fun sendControl(nodeId: String, path: String, data: ByteArray): Boolean {
+        val client = messageClient ?: return false
+        if (!started || !path.startsWith(WearLinkContract.CONTROL_PREFIX)) return false
+        return try {
+            client.sendMessage(nodeId, path, data)
+                .addOnFailureListener { error -> Log.d(TAG, "Control send failed: ${error.message}") }
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Control send rejected: ${e.message}")
+            false
+        }
+    }
+
+    @Volatile
     private var started = false
 
     private val capabilityListener = CapabilityClient.OnCapabilityChangedListener { info ->
@@ -72,7 +92,13 @@ class GmsWearLinkChannel(
     }
 
     private val messageListener = MessageClient.OnMessageReceivedListener { event: MessageEvent ->
-        if (event.path == WearLinkContract.PATH_PACKET) {
+        if (event.path.startsWith(WearLinkContract.CONTROL_PREFIX)) {
+            try {
+                controlListener?.invoke(event.sourceNodeId, event.path, event.data)
+            } catch (e: Exception) {
+                Log.w(TAG, "Control handler failed: ${e.message}")
+            }
+        } else if (event.path == WearLinkContract.PATH_PACKET) {
             try {
                 onMessage?.invoke(event.sourceNodeId, event.data)
             } catch (e: Exception) {

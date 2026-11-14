@@ -41,6 +41,7 @@ object MessageHistory {
         if (enabled) {
             AppStateStore.initializeConversationPersistence(context)
         } else {
+            AppStateStore.detachConversationPersistence()
             // History was switched off earlier. Erase again in case that wipe never finished.
             scope.launch { erase(context) }
         }

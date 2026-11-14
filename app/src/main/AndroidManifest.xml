@@ -152,5 +152,8 @@
             android:label="Share Murmur"
             android:theme="@style/Theme.BitchatAndroid"
             android:launchMode="singleTop" />
+        <receiver
+            android:name=".wearlink.WatchLinkApprovalReceiver"
+            android:exported="false" />
     </application>
 </manifest>

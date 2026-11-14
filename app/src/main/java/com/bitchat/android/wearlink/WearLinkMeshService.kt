@@ -38,7 +38,7 @@ import kotlinx.coroutines.launch
  */
 class WearLinkMeshService(
     private val context: Context,
-    channel: WearLinkChannel = GmsWearLinkChannel(
+    private val channel: WearLinkChannel = GmsWearLinkChannel(
         context,
         localCapability = WearLinkContract.CAPABILITY_PHONE_RELAY,
         remoteCapability = WearLinkContract.CAPABILITY_WATCH_NODE
@@ -58,6 +58,9 @@ class WearLinkMeshService(
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val transport = WearLinkTransport(serviceScope, channel, defaultRoute = false)
+
+    /** Watches that took this phone's identity: approval, chat mirroring, remote wipe. */
+    val linkCoordinator = LinkedWatchCoordinator(context, serviceScope, channel)
     private val meshCore: MeshCore
     private var nodeWatcher: Job? = null
 
@@ -127,8 +130,11 @@ class WearLinkMeshService(
             )
         )
         transport.attachFragmentManager(meshCore.fragmentManager)
+        // A watch linked to this phone's identity is mirrored, not meshed: no packets to it.
+        transport.excludeNode = { node -> linkCoordinator.isLinked(node) }
         transport.listener = object : WearLinkTransport.Listener {
             override fun onPacket(packet: BitchatPacket, peerID: String, linkAddress: String) {
+                linkCoordinator.onPacketFromNode(WearLinkContract.nodeIdOf(linkAddress))
                 meshCore.processIncoming(packet, peerID, linkAddress, linkAddress)
             }
 
@@ -194,6 +200,7 @@ class WearLinkMeshService(
         if (isActive) return
         isActive = true
         transport.start()
+        linkCoordinator.start()
         TransportBridgeService.register(ID, this)
         meshCore.startCore()
         MeshServiceHolder.startSharedGossip(ID)
@@ -220,6 +227,7 @@ class WearLinkMeshService(
         isActive = false
         nodeWatcher?.cancel()
         nodeWatcher = null
+        linkCoordinator.stop()
         TransportBridgeService.unregister(ID)
         MeshServiceHolder.stopSharedGossip(ID)
         AppStateStore.clearTransportPeers(ID)

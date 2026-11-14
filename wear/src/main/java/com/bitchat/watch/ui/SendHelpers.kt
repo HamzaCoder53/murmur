@@ -13,16 +13,23 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 internal fun sendPublicMessage(mesh: WearMeshService, content: String) {
-    mesh.sendMessage(content)
-    AppStateStore.addPublicMessage(
-        BitchatMessage(
-            sender = mesh.nickname,
-            content = content,
-            timestamp = Date(),
-            senderPeerID = mesh.myPeerID,
-            deliveryStatus = DeliveryStatus.Sent
-        )
+    val message = BitchatMessage(
+        sender = mesh.nickname,
+        content = content,
+        timestamp = Date(),
+        senderPeerID = mesh.myPeerID,
+        deliveryStatus = DeliveryStatus.Sent
     )
+    if (mesh.isMirrored) {
+        // Linked and next to the phone: the phone sends it, and shows it too.
+        val handed = mesh.sendPublicViaPhone(message.id, content)
+        AppStateStore.addPublicMessage(
+            if (handed) message else message.copy(deliveryStatus = DeliveryStatus.Failed("Phone not reachable"))
+        )
+        return
+    }
+    mesh.sendMessage(content)
+    AppStateStore.addPublicMessage(message)
 }
 
 /**
@@ -37,8 +44,27 @@ internal fun sendPrivateMessage(
     content: String,
     scope: CoroutineScope
 ) {
-    val established = mesh.hasEstablishedSession(peerID)
     val messageID = java.util.UUID.randomUUID().toString()
+    if (mesh.isMirrored) {
+        // Linked and next to the phone: the phone routes it (mesh, internet, or its own queue).
+        val handed = mesh.sendPrivateViaPhone(messageID, peerID, recipientNickname, content)
+        AppStateStore.addPrivateMessage(
+            peerID,
+            BitchatMessage(
+                id = messageID,
+                sender = mesh.nickname,
+                content = content,
+                timestamp = Date(),
+                isPrivate = true,
+                recipientNickname = recipientNickname,
+                senderPeerID = mesh.myPeerID,
+                deliveryStatus = if (handed) DeliveryStatus.Sending else DeliveryStatus.Failed("Phone not reachable")
+            ),
+            forceRead = true
+        )
+        return
+    }
+    val established = mesh.hasEstablishedSession(peerID)
     if (established) {
         mesh.sendPrivateMessageWithId(content, peerID, recipientNickname, messageID)
     } else {
@@ -81,16 +107,20 @@ internal fun sendPrivateMessage(
 internal fun sendVoiceNote(mesh: WearMeshService, peerID: String?, path: String) {
     val file = File(path)
     if (!file.isFile) return
+    // Voice notes are not relayed through the phone in linked mode yet.
+    val unsupported = mesh.isMirrored
     val packet = BitchatFilePacket(
         fileName = file.name,
         fileSize = file.length(),
         mimeType = "audio/mp4",
         content = file.readBytes()
     )
-    if (peerID == null) {
-        mesh.sendFileBroadcast(packet)
-    } else {
-        mesh.sendFilePrivateEncrypted(peerID, packet)
+    if (!unsupported) {
+        if (peerID == null) {
+            mesh.sendFileBroadcast(packet)
+        } else {
+            mesh.sendFilePrivateEncrypted(peerID, packet)
+        }
     }
     val echo = BitchatMessage(
         sender = mesh.nickname,
@@ -99,7 +129,11 @@ internal fun sendVoiceNote(mesh: WearMeshService, peerID: String?, path: String)
         timestamp = Date(),
         isPrivate = peerID != null,
         senderPeerID = mesh.myPeerID,
-        deliveryStatus = DeliveryStatus.Sent
+        deliveryStatus = if (unsupported) {
+            DeliveryStatus.Failed("Voice notes need the watch away from the phone for now")
+        } else {
+            DeliveryStatus.Sent
+        }
     )
     if (peerID == null) {
         AppStateStore.addPublicMessage(echo)

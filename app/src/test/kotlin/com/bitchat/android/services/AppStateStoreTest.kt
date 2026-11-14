@@ -22,6 +22,25 @@ class AppStateStoreTest {
     fun tearDown() {
         AppStateStore.resumePrivateConversationsAfterPanic()
         AppStateStore.clear()
+        AppStateStore.setConversationRepositoryForTest(null)
+    }
+
+    @Test
+    fun `with history switched off a durable private message is kept in memory`() = runBlocking {
+        AppStateStore.detachConversationPersistence()
+        val message = BitchatMessage(
+            id = "history-off-message",
+            sender = "alice",
+            content = "not saved to disk",
+            timestamp = Date(1_700_000_000_000L),
+            isPrivate = true,
+            senderPeerID = "1122334455667788"
+        )
+
+        val added = AppStateStore.addPrivateMessageDurably("1122334455667788", message)
+
+        assertTrue(added)
+        assertTrue(AppStateStore.privateMessages.value.values.flatten().any { it.id == message.id })
     }
 
     @Test

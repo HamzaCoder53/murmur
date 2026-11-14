@@ -1425,6 +1425,11 @@ class ChatViewModel(
 
     private suspend fun performPanicClearAllData() {
         Log.w(TAG, "🚨 PANIC MODE ACTIVATED - Clearing all sensitive data")
+        // Murmur: watches sharing this identity erase it too (if reachable right now).
+        try {
+            com.bitchat.android.wearlink.WearLinkController.getService()
+                ?.linkCoordinator?.wipeLinkedWatches()
+        } catch (_: Exception) { }
         try {
             com.bitchat.android.geohash.LocationChannelManager
                 .getInstance(getApplication())

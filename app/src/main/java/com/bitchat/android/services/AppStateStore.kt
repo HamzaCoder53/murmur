@@ -80,6 +80,7 @@ object AppStateStore {
 
     fun initializeConversationPersistence(context: Context) {
         val repository = ConversationRepository.getInstance(context.applicationContext)
+        historyDisabled = false
         conversationRepository = repository
         repository.initialize(::restorePrivateConversations)
     }
@@ -101,8 +102,13 @@ object AppStateStore {
     fun detachConversationPersistence() {
         synchronized(this) {
             conversationRepository = null
+            historyDisabled = true
         }
     }
+
+    /** True while "Save message history" is off: private messages live in memory only. */
+    @Volatile
+    private var historyDisabled = false
 
     internal fun setConversationRepositoryForTest(repository: ConversationRepository?) {
         conversationRepository = repository
@@ -296,8 +302,22 @@ object AppStateStore {
         }
         val repository = persistence.repository
         if (repository == null) {
-            synchronized(this) { reservedPrivateMessageIds.remove(msg.id) }
-            return false
+            return synchronized(this) {
+                reservedPrivateMessageIds.remove(msg.id)
+                // History switched off: keep the message in memory only. (Without this branch a
+                // missing repository rejects the message outright, which is right only while the
+                // repository is still starting up.)
+                if (historyDisabled) {
+                    addPrivateMessageLocked(
+                        peerID = peerID,
+                        msg = msg,
+                        forceRead = forceRead,
+                        persistAsynchronously = false
+                    )
+                } else {
+                    false
+                }
+            }
         }
         val persisted = repository.upsertMessageAndWait(
             conversationID = persistence.conversationID,

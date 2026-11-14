@@ -58,3 +58,10 @@ class SwitchingTransport(
     private fun transportFor(relayAddress: String): MeshTransport =
         if (WearLinkContract.isLinkAddress(relayAddress)) phoneLink else bluetooth
 }
+
+/** A transport that reaches nobody: the phone side of a watch that shares the phone's identity. */
+object NoTransport : MeshTransport {
+    override val id: String = "NONE"
+    override fun broadcastPacket(routed: RoutedPacket): Boolean = false
+    override fun sendPacketToPeer(peerID: String, packet: BitchatPacket): Boolean = false
+}

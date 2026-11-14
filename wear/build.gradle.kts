@@ -20,8 +20,8 @@ android {
         targetSdk = libs.versions.targetSdk.get().toInt()
         // Wear releases use a separate high range because Play requires every artifact in
         // one application ID to have a unique version code across all form factors.
-        versionCode = 1_000_000_004
-        versionName = "0.1.4"
+        versionCode = 1_000_000_005
+        versionName = "0.2.0"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -124,6 +124,8 @@ val sharedSourceIncludes = listOf(
     "com/bitchat/android/wearlink/WearLinkChannel.kt",
     "com/bitchat/android/wearlink/GmsWearLinkChannel.kt",
     "com/bitchat/android/wearlink/WearLinkTransport.kt",
+    "com/bitchat/android/wearlink/IdentityBundle.kt",
+    "com/bitchat/android/wearlink/MirrorProtocol.kt",
 )
 val sharedSourceExcludes = listOf(
     "com/bitchat/android/model/FileSharingManager.kt",

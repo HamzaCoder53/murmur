@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -87,6 +89,12 @@ fun ChatMenuScreen(onQuit: () -> Unit) {
     var confirmQuit by rememberSaveable { mutableStateOf(false) }
     var liveVoiceEnabled by remember { mutableStateOf(LiveVoicePreferences.isEnabled(context)) }
     val saveHistory by com.bitchat.android.services.MessageHistory.enabled.collectAsState()
+    val linkClient = com.bitchat.watch.mesh.WearMeshService.peek()?.linkedClient
+    val linkState by (linkClient?.state ?: kotlinx.coroutines.flow.MutableStateFlow(
+        com.bitchat.watch.link.LinkedPhoneClient.State.NOT_LINKED
+    )).collectAsState()
+    var confirmLink by rememberSaveable { mutableStateOf(false) }
+    var confirmUnlink by rememberSaveable { mutableStateOf(false) }
     var confirmEraseHistory by rememberSaveable { mutableStateOf(false) }
 
     ScreenScaffold(scrollState = listState) { scaffoldPadding ->
@@ -146,6 +154,15 @@ fun ChatMenuScreen(onQuit: () -> Unit) {
                     Text("Save history", maxLines = 1)
                 }
             }
+            if (linkClient != null) {
+                item {
+                    LinkPhoneButton(
+                        state = linkState,
+                        onLink = { confirmLink = true },
+                        onUnlink = { confirmUnlink = true },
+                    )
+                }
+            }
             item {
                 FilledTonalButton(
                     onClick = { confirmQuit = true },
@@ -170,6 +187,42 @@ fun ChatMenuScreen(onQuit: () -> Unit) {
             }
         }
     }
+
+    AlertDialog(
+        visible = confirmLink,
+        onDismissRequest = { confirmLink = false },
+        title = { Text("Link to phone?") },
+        text = {
+            Text("Uses your phone's identity, so messages reach both. This watch's identity and saved chats are erased.")
+        },
+        confirmButton = {
+            AlertDialogDefaults.ConfirmButton(onClick = {
+                confirmLink = false
+                linkClient?.requestLink()
+            })
+        },
+        dismissButton = { AlertDialogDefaults.DismissButton(onClick = { confirmLink = false }) },
+    )
+
+    AlertDialog(
+        visible = confirmUnlink,
+        onDismissRequest = { confirmUnlink = false },
+        title = { Text("Unlink phone?") },
+        text = { Text("This watch gets a new identity of its own. Its saved chats are erased.") },
+        confirmButton = {
+            AlertDialogDefaults.ConfirmButton(
+                onClick = {
+                    confirmUnlink = false
+                    linkClient?.unlink()
+                },
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError,
+                ),
+            )
+        },
+        dismissButton = { AlertDialogDefaults.DismissButton(onClick = { confirmUnlink = false }) },
+    )
 
     AlertDialog(
         visible = confirmEraseHistory,
@@ -228,4 +281,40 @@ private fun meshStatusText(count: Int): String = when (count) {
     0 -> "Mesh on · scanning"
     1 -> "Mesh on · 1 peer"
     else -> "Mesh on · $count peers"
+}
+
+@Composable
+private fun LinkPhoneButton(
+    state: com.bitchat.watch.link.LinkedPhoneClient.State,
+    onLink: () -> Unit,
+    onUnlink: () -> Unit,
+) {
+    val palette = LocalBitchatPalette.current
+    val linked = state == com.bitchat.watch.link.LinkedPhoneClient.State.LINKED
+    val busy = state == com.bitchat.watch.link.LinkedPhoneClient.State.REQUESTING ||
+        state == com.bitchat.watch.link.LinkedPhoneClient.State.RESTARTING
+    val detail = when (state) {
+        com.bitchat.watch.link.LinkedPhoneClient.State.NOT_LINKED -> "Share phone's identity"
+        com.bitchat.watch.link.LinkedPhoneClient.State.NO_PHONE -> "Open Murmur on phone"
+        com.bitchat.watch.link.LinkedPhoneClient.State.REQUESTING -> "Confirm on phone"
+        com.bitchat.watch.link.LinkedPhoneClient.State.DENIED -> "Not allowed on phone"
+        com.bitchat.watch.link.LinkedPhoneClient.State.LINKED -> "Same identity as phone"
+        com.bitchat.watch.link.LinkedPhoneClient.State.RESTARTING -> "Restarting Murmur"
+    }
+    FilledTonalButton(
+        onClick = { if (linked) onUnlink() else onLink() },
+        enabled = !busy,
+        modifier = Modifier.fillMaxWidth(),
+        icon = {
+            Icon(
+                imageVector = if (linked) Icons.Filled.LinkOff else Icons.Filled.Link,
+                contentDescription = null,
+            )
+        },
+        secondaryLabel = {
+            Text(text = detail, color = palette.textTertiary, maxLines = 1)
+        },
+    ) {
+        Text(if (linked) "Unlink phone" else "Link to phone", maxLines = 1)
+    }
 }

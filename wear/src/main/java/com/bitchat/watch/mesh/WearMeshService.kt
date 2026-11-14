@@ -33,6 +33,8 @@ import com.bitchat.android.wearlink.WearLinkContract
 import com.bitchat.android.wearlink.WearLinkTransport
 import com.bitchat.watch.link.LinkMode
 import com.bitchat.watch.link.LinkModeController
+import com.bitchat.watch.link.LinkedPhoneClient
+import com.bitchat.watch.link.NoTransport
 import com.bitchat.watch.link.SwitchingTransport
 import com.bitchat.watch.rendezvous.AndroidRendezvousPlatform
 import com.bitchat.watch.rendezvous.MeshClock
@@ -97,12 +99,22 @@ class WearMeshService private constructor(private val context: Context) {
         remoteCapability = WearLinkContract.CAPABILITY_PHONE_RELAY
     )
     private val phoneLink = WearLinkTransport(serviceScope, linkChannel, defaultRoute = true)
+
+    /** Set when this watch uses its phone's identity (see [LinkedPhoneClient]). */
+    val linkedClient = LinkedPhoneClient(context, serviceScope, linkChannel) { myPeerID }
+
+    /** True while linked and next to the phone: the phone is on the mesh, the watch mirrors it. */
+    val isMirrored: Boolean get() = linkedClient.mirroring
     private val linkModeController = LinkModeController(
         scope = serviceScope,
         phoneReachable = linkChannel.reachableNodes.map { it.isNotEmpty() },
         onModeChanged = ::onLinkModeChanged
     )
-    private val transport = SwitchingTransport(bleTransport, phoneLink) { linkModeController.mode.value }
+    // A linked watch never tunnels packets: next to the phone it is the phone, on the mesh.
+    private val transport = SwitchingTransport(
+        bluetooth = bleTransport,
+        phoneLink = if (linkedClient.linked) NoTransport else phoneLink
+    ) { linkModeController.mode.value }
     private val meshCore: MeshCore
     private var connectionManager: BluetoothConnectionManager
 
@@ -404,7 +416,8 @@ class WearMeshService private constructor(private val context: Context) {
             )
             // Start on the watch's own radio; the controller moves to the phone if one answers.
             enterStandalone()
-            phoneLink.start()
+            linkedClient.start()
+            if (linkedClient.linked) linkChannel.start() else phoneLink.start()
             linkModeController.start()
             outboxJob = serviceScope.launch {
                 while (true) {
@@ -430,7 +443,8 @@ class WearMeshService private constructor(private val context: Context) {
             rendezvous.stop()
             RendezvousAlarmReceiver.engine = null
             try { context.unregisterReceiver(exactAlarmAccessReceiver) } catch (_: Exception) { }
-            phoneLink.stop()
+            linkedClient.stop()
+            if (linkedClient.linked) linkChannel.stop() else phoneLink.stop()
             meshCore.stopCore()
             connectionManager.stopServices()
             bluetoothRunning = false
@@ -449,6 +463,15 @@ class WearMeshService private constructor(private val context: Context) {
             refreshClockTrust()
         }
         Log.i(TAG, "Link mode: $mode")
+        if (linkedClient.linked) {
+            if (mode == LinkMode.TETHERED) {
+                // Same identity as the phone: stay silent, mirror it, and hand over unsent DMs.
+                linkedClient.onTethered()
+                handOutboxToPhone()
+                return
+            }
+            linkedClient.onStandalone()
+        }
         serviceScope.launch {
             delay(300)
             meshCore.sendBroadcastAnnounce()
@@ -461,6 +484,14 @@ class WearMeshService private constructor(private val context: Context) {
             delay(3_000)
             runOutboxPass(urgentPeers = dmOutbox.pending().mapTo(HashSet()) { it.peerID })
         }
+    }
+
+    /** Linked and back with the phone: the phone delivers (or queues) what is still pending. */
+    private fun handOutboxToPhone() {
+        dmOutbox.pending().forEach { entry ->
+            linkedClient.sendPrivate(entry.messageID, entry.peerID, entry.recipientNickname, entry.content)
+        }
+        dmOutbox.clear()
     }
 
     /** Bring up the watch's own BLE mesh and hand background scanning to the rendezvous engine. */
@@ -498,7 +529,7 @@ class WearMeshService private constructor(private val context: Context) {
     }
 
     private fun runOutboxPass(urgentPeers: Set<String> = emptySet()) {
-        if (!isActive || dmOutbox.size == 0) return
+        if (!isActive || dmOutbox.size == 0 || isMirrored) return
         val actions = dmOutbox.due(
             statusOf = ::privateMessageStatus,
             isReachable = { peer -> getPeerInfo(peer)?.isConnected == true },
@@ -584,9 +615,13 @@ class WearMeshService private constructor(private val context: Context) {
         }
     }
 
-    fun initiateNoiseHandshake(peerID: String) = meshCore.initiateNoiseHandshake(peerID)
+    fun initiateNoiseHandshake(peerID: String) {
+        if (!isMirrored) meshCore.initiateNoiseHandshake(peerID)
+    }
 
-    fun hasEstablishedSession(peerID: String): Boolean = meshCore.hasEstablishedSession(peerID)
+    /** While mirroring, the phone routes private messages itself (mesh, internet or queue). */
+    fun hasEstablishedSession(peerID: String): Boolean =
+        if (isMirrored) true else meshCore.hasEstablishedSession(peerID)
 
     fun getSessionState(peerID: String) = meshCore.getSessionState(peerID)
 
@@ -669,11 +704,21 @@ class WearMeshService private constructor(private val context: Context) {
 
     fun getPeerFingerprint(peerID: String): String? = meshCore.getPeerFingerprint(peerID)
 
-    fun getPeerNicknames(): Map<String, String> = meshCore.getPeerNicknames()
+    fun getPeerNicknames(): Map<String, String> =
+        if (isMirrored) meshCore.getPeerNicknames() + linkedClient.peerNicknames() else meshCore.getPeerNicknames()
 
-    fun getPeerRSSI(): Map<String, Int> = meshCore.getPeerRSSI()
+    fun getPeerRSSI(): Map<String, Int> = if (isMirrored) emptyMap() else meshCore.getPeerRSSI()
 
-    fun getPeerNickname(peerID: String): String? = meshCore.getPeerNickname(peerID)
+    fun getPeerNickname(peerID: String): String? =
+        (if (isMirrored) linkedClient.peerNicknames()[peerID] else null) ?: meshCore.getPeerNickname(peerID)
+
+    /** Mirroring: ask the phone to send a public message. Returns false if it could not be handed over. */
+    fun sendPublicViaPhone(messageID: String, content: String): Boolean =
+        linkedClient.sendPublic(messageID, content)
+
+    /** Mirroring: ask the phone to send a private message. */
+    fun sendPrivateViaPhone(messageID: String, peerID: String, recipientNickname: String, content: String): Boolean =
+        linkedClient.sendPrivate(messageID, peerID, recipientNickname, content)
 
     fun getDebugStatus(): String = meshCore.getDebugStatus(
         transportInfo = transport.getTransportDebugInfo(),

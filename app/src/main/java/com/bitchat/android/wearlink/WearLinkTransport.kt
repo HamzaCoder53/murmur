@@ -71,8 +71,12 @@ class WearLinkTransport(
     fun liveNodes(): Set<String> {
         val cutoff = now() - HEARD_FRESH_MS
         val heard = lastHeard.filterValues { it >= cutoff }.keys
-        return channel.reachableNodes.value + heard
+        return (channel.reachableNodes.value + heard).filterNot(excludeNode).toSet()
     }
+
+    /** Nodes never used for packets (a watch sharing this device's identity). */
+    @Volatile
+    var excludeNode: (String) -> Boolean = { false }
 
     /** MeshCore owns the fragment manager but needs its transport first, so attach it afterwards. */
     fun attachFragmentManager(fragmentManager: FragmentManager) {

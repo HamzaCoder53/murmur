@@ -24,4 +24,10 @@ interface WearLinkChannel {
      * true means accepted for delivery, not delivered.
      */
     fun send(nodeId: String, data: ByteArray): Boolean
+
+    /** Send a control message on a [WearLinkContract.CONTROL_PREFIX] path. */
+    fun sendControl(nodeId: String, path: String, data: ByteArray): Boolean = false
+
+    /** Receives control messages; may be called on any thread. */
+    fun setControlListener(listener: ((nodeId: String, path: String, data: ByteArray) -> Unit)?) = Unit
 }
