@@ -70,6 +70,8 @@ internal fun sendPrivateMessage(
             deliveryStatus = if (established) DeliveryStatus.Sent else DeliveryStatus.Sending
         )
     )
+    // Resent later if no delivery receipt arrives (link down, recipient out of range).
+    mesh.trackOutgoingPrivate(messageID, peerID, recipientNickname, content)
 }
 
 /**

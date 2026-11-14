@@ -433,9 +433,12 @@ class ChatViewModel(
         // Application startup performs the initial restore. Repeat it for every new UI owner
         // because a quick reopen can reuse a process whose in-memory state was cleared during
         // controlled shutdown.
-        com.bitchat.android.services.AppStateStore.reloadConversationPersistence(
-            getApplication()
-        )
+        // Murmur: only when "Save message history" is on.
+        if (com.bitchat.android.services.MessageHistory.isEnabled(getApplication())) {
+            com.bitchat.android.services.AppStateStore.reloadConversationPersistence(
+                getApplication()
+            )
+        }
         // Mark queued private messages as failed when the router gives up on them
         try {
             com.bitchat.android.services.MessageRouter.getInstance(getApplication(), mesh).onMessageExpired = { messageID ->

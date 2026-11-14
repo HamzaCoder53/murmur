@@ -86,6 +86,8 @@ fun ChatMenuScreen(onQuit: () -> Unit) {
     val listState = rememberScalingLazyListState()
     var confirmQuit by rememberSaveable { mutableStateOf(false) }
     var liveVoiceEnabled by remember { mutableStateOf(LiveVoicePreferences.isEnabled(context)) }
+    val saveHistory by com.bitchat.android.services.MessageHistory.enabled.collectAsState()
+    var confirmEraseHistory by rememberSaveable { mutableStateOf(false) }
 
     ScreenScaffold(scrollState = listState) { scaffoldPadding ->
         ScalingLazyColumn(
@@ -127,6 +129,24 @@ fun ChatMenuScreen(onQuit: () -> Unit) {
                 }
             }
             item {
+                SwitchButton(
+                    checked = saveHistory,
+                    onCheckedChange = { enable ->
+                        if (enable) {
+                            com.bitchat.android.services.MessageHistory.setEnabled(context, true)
+                        } else {
+                            confirmEraseHistory = true
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    secondaryLabel = {
+                        Text("Private chats", maxLines = 1)
+                    },
+                ) {
+                    Text("Save history", maxLines = 1)
+                }
+            }
+            item {
                 FilledTonalButton(
                     onClick = { confirmQuit = true },
                     modifier = Modifier.fillMaxWidth(),
@@ -150,6 +170,28 @@ fun ChatMenuScreen(onQuit: () -> Unit) {
             }
         }
     }
+
+    AlertDialog(
+        visible = confirmEraseHistory,
+        onDismissRequest = { confirmEraseHistory = false },
+        title = { Text("Erase saved chats?") },
+        text = { Text("Stops saving and erases private chats saved on this watch.") },
+        confirmButton = {
+            AlertDialogDefaults.ConfirmButton(
+                onClick = {
+                    confirmEraseHistory = false
+                    com.bitchat.android.services.MessageHistory.setEnabled(context, false)
+                },
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError,
+                ),
+            )
+        },
+        dismissButton = {
+            AlertDialogDefaults.DismissButton(onClick = { confirmEraseHistory = false })
+        },
+    )
 
     AlertDialog(
         visible = confirmQuit,

@@ -211,6 +211,11 @@
   <string name="about_pow_tip">Add proof of work to geohash messages for spam deterrence.</string>
   <string name="about_spam_filter_title">Spam Filter</string>
   <string name="about_spam_filter_desc">Hide public messages from people who post too fast, repeat themselves, or flood links.</string>
+  <string name="about_save_history_title">Save message history</string>
+  <string name="about_save_history_desc">Keep private chats on this phone, encrypted, after the app closes.</string>
+  <string name="about_save_history_off_title">Stop saving history?</string>
+  <string name="about_save_history_off_message">Private chat history saved on this phone will be erased. Chats on screen stay until the app closes. This cannot be undone.</string>
+  <string name="about_save_history_off_confirm">Erase and stop</string>
   <string name="about_pow_difficulty">Difficulty: %1$d bits (~%2$s)</string>
   <string name="about_pow_difficulty_attempts">Difficulty %1$d requires ~%2$s hash attempts</string>
   <string name="about_pow_desc_none">No proof of work required</string>

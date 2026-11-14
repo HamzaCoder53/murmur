@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.FilterAlt
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -514,6 +515,9 @@ fun AboutSheet(
                         val powEnabled by PoWPreferenceManager.powEnabled.collectAsState()
                         val powDifficulty by PoWPreferenceManager.powDifficulty.collectAsState()
                         val spamFilterEnabled by SpamFilterPreferences.enabled.collectAsState()
+                        val saveHistoryEnabled by com.bitchat.android.services.MessageHistory.enabled.collectAsState()
+                        var confirmDisableHistory by remember { mutableStateOf(false) }
+                        val historyContext = androidx.compose.ui.platform.LocalContext.current
                         var backgroundEnabled by remember { mutableStateOf(com.bitchat.android.service.MeshServicePreferences.isBackgroundEnabled(true)) }
                         var liveVoiceEnabled by remember {
                             mutableStateOf(com.bitchat.android.features.voice.LiveVoicePreferences.isEnabled(context))
@@ -596,6 +600,50 @@ fun AboutSheet(
                                         checked = spamFilterEnabled,
                                         onCheckedChange = { SpamFilterPreferences.setEnabled(it) }
                                     )
+
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(start = 54.dp),
+                                        thickness = 1.dp,
+                                        color = colorScheme.outlineVariant
+                                    )
+
+                                    // Murmur: Save message history toggle
+                                    SettingsToggleRow(
+                                        icon = Icons.Filled.History,
+                                        title = stringResource(R.string.about_save_history_title),
+                                        subtitle = stringResource(R.string.about_save_history_desc),
+                                        checked = saveHistoryEnabled,
+                                        onCheckedChange = { enable ->
+                                            if (enable) {
+                                                com.bitchat.android.services.MessageHistory.setEnabled(historyContext, true)
+                                            } else {
+                                                confirmDisableHistory = true
+                                            }
+                                        }
+                                    )
+                                    if (confirmDisableHistory) {
+                                        AlertDialog(
+                                            onDismissRequest = { confirmDisableHistory = false },
+                                            title = { Text(stringResource(R.string.about_save_history_off_title)) },
+                                            text = { Text(stringResource(R.string.about_save_history_off_message)) },
+                                            confirmButton = {
+                                                TextButton(onClick = {
+                                                    confirmDisableHistory = false
+                                                    com.bitchat.android.services.MessageHistory.setEnabled(historyContext, false)
+                                                }) {
+                                                    Text(
+                                                        stringResource(R.string.about_save_history_off_confirm),
+                                                        color = colorScheme.error
+                                                    )
+                                                }
+                                            },
+                                            dismissButton = {
+                                                TextButton(onClick = { confirmDisableHistory = false }) {
+                                                    Text(stringResource(R.string.cancel))
+                                                }
+                                            }
+                                        )
+                                    }
 
                                     HorizontalDivider(
                                         modifier = Modifier.padding(start = 54.dp),

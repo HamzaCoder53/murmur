@@ -37,7 +37,8 @@ class BitchatApplication : Application() {
         // AppStateStore merges any in-flight arrivals by message ID, so startup cannot replace
         // newer transport state with an older database snapshot.
         try {
-            com.bitchat.android.services.AppStateStore.initializeConversationPersistence(this)
+            // Murmur: saving is governed by the "Save message history" switch.
+            com.bitchat.android.services.MessageHistory.initialize(this)
         } catch (_: Exception) { }
 
         // Warm up Nostr identity to ensure npub is available for favorite notifications

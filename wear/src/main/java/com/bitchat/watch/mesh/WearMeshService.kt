@@ -124,6 +124,10 @@ class WearMeshService private constructor(private val context: Context) {
 
     val rendezvousStatus: StateFlow<RendezvousEngine.Status> get() = rendezvous.status
 
+    /** Private messages awaiting a delivery receipt; resent when the recipient is reachable. */
+    private val dmOutbox = DmOutbox()
+    private var outboxJob: kotlinx.coroutines.Job? = null
+
     /** Guards radio start/stop so a mode switch cannot interleave with service start or stop. */
     private val radioLock = Any()
 
@@ -194,6 +198,8 @@ class WearMeshService private constructor(private val context: Context) {
                     }
                     routed.peerID?.let { pid ->
                         maybeAutoHandshake(pid)
+                        // A peer that reappears gets anything still waiting for it straight away.
+                        serviceScope.launch { runOutboxPass(urgentPeers = setOf(pid)) }
                         try {
                             meshCore.gossipSyncManager.scheduleInitialSyncToPeer(pid, 1_000)
                         } catch (_: Exception) { }
@@ -400,6 +406,12 @@ class WearMeshService private constructor(private val context: Context) {
             enterStandalone()
             phoneLink.start()
             linkModeController.start()
+            outboxJob = serviceScope.launch {
+                while (true) {
+                    delay(DmOutbox.FIRST_RETRY_MS)
+                    runOutboxPass()
+                }
+            }
             serviceScope.launch {
                 delay(500)
                 meshCore.sendBroadcastAnnounce()
@@ -412,6 +424,8 @@ class WearMeshService private constructor(private val context: Context) {
         synchronized(radioLock) {
             if (!isActive) return
             isActive = false
+            outboxJob?.cancel()
+            outboxJob = null
             linkModeController.stop()
             rendezvous.stop()
             RendezvousAlarmReceiver.engine = null
@@ -442,6 +456,11 @@ class WearMeshService private constructor(private val context: Context) {
         // Catch up on public messages either side sent while the link was down, rather than
         // waiting for the next periodic sync.
         try { meshCore.gossipSyncManager.scheduleInitialSync(1_500) } catch (_: Exception) { }
+        // And retry private messages that went out while the link was down.
+        serviceScope.launch {
+            delay(3_000)
+            runOutboxPass(urgentPeers = dmOutbox.pending().mapTo(HashSet()) { it.peerID })
+        }
     }
 
     /** Bring up the watch's own BLE mesh and hand background scanning to the rendezvous engine. */
@@ -472,6 +491,42 @@ class WearMeshService private constructor(private val context: Context) {
             bluetoothRunning = false
         }
     }
+
+    /** Hold a private text message until the recipient acknowledges it. */
+    fun trackOutgoingPrivate(messageID: String, peerID: String, recipientNickname: String, content: String) {
+        dmOutbox.track(messageID, peerID, recipientNickname, content)
+    }
+
+    private fun runOutboxPass(urgentPeers: Set<String> = emptySet()) {
+        if (!isActive || dmOutbox.size == 0) return
+        val actions = dmOutbox.due(
+            statusOf = ::privateMessageStatus,
+            isReachable = { peer -> getPeerInfo(peer)?.isConnected == true },
+            hasSession = ::hasEstablishedSession,
+            urgentPeers = urgentPeers
+        )
+        for (action in actions) {
+            val entry = action.entry
+            when (action) {
+                is DmOutbox.Action.Resend -> {
+                    meshCore.sendPrivateMessage(entry.content, entry.peerID, entry.recipientNickname, entry.messageID)
+                    AppStateStore.updatePrivateMessageStatus(entry.messageID, com.bitchat.android.model.DeliveryStatus.Sent)
+                }
+                is DmOutbox.Action.Handshake -> maybeAutoHandshake(entry.peerID)
+                is DmOutbox.Action.Expire -> AppStateStore.updatePrivateMessageStatus(
+                    entry.messageID,
+                    com.bitchat.android.model.DeliveryStatus.Failed("Not delivered")
+                )
+            }
+            dmOutbox.attempted(action)
+        }
+    }
+
+    private fun privateMessageStatus(messageID: String): com.bitchat.android.model.DeliveryStatus? =
+        AppStateStore.privateMessages.value.values.asSequence()
+            .flatten()
+            .firstOrNull { it.id == messageID }
+            ?.deliveryStatus
 
     /** The watch's wall clock is trusted while tethered and for a while after. */
     private fun refreshClockTrust() {

@@ -94,6 +94,16 @@ object AppStateStore {
         repository.reload(::restorePrivateConversations)
     }
 
+    /**
+     * Stops writing private conversations to disk. In-memory conversations are kept; see
+     * [MessageHistory] for erasing what was already saved.
+     */
+    fun detachConversationPersistence() {
+        synchronized(this) {
+            conversationRepository = null
+        }
+    }
+
     internal fun setConversationRepositoryForTest(repository: ConversationRepository?) {
         conversationRepository = repository
     }
