@@ -74,7 +74,9 @@ sealed class NostrRequest {
          * Serialize request to JSON string
          */
         fun toJson(request: NostrRequest): String {
-            return createGson().toJson(request)
+            // The declared type matters: without it Gson picks the runtime subclass, skips
+            // RequestSerializer and writes an object, which relays reject as unparseable.
+            return createGson().toJson(request, NostrRequest::class.java)
         }
     }
 }

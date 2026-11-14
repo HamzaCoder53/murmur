@@ -67,8 +67,14 @@ class WatchNostrClient(
     private val scope: CoroutineScope,
     private val myPeerID: () -> String,
     private val myNickname: () -> String,
-    private val onIncomingPrivate: (BitchatMessage) -> Unit
+    private val onIncomingPrivate: (BitchatMessage) -> Unit,
+    /** This device's internet identity (overridable for tests). */
+    private val identityProvider: () -> NostrIdentity? = { NostrIdentityBridge.getCurrentNostrIdentity(context) },
+    /** A connection to use for relays (overridable for tests); null means use the system's. */
+    private val leaseProvider: (suspend () -> Lease?)? = null
 ) {
+    /** An internet connection borrowed for one job; [release] hands it back. */
+    class Lease(val client: OkHttpClient, val release: () -> Unit)
     enum class Mode(val label: String, val intervalMs: Long?) {
         OFF("Off", null),
         EVERY_5_MIN("Every 5 min", 5 * 60_000L),
@@ -89,7 +95,8 @@ class WatchNostrClient(
         private const val TAG = "WatchNostr"
         private const val PREFS = "murmur_internet"
         private const val KEY_MODE = "mode"
-        private const val KEY_SINCE = "since_ms"
+        private const val KEY_SEEN = "seen_event_ids"
+        private const val SEEN_PERSISTED = 500
         val DEFAULT_MODE = Mode.EVERY_5_MIN
 
         /** Same relays Bitchat uses by default. */
@@ -103,8 +110,11 @@ class WatchNostrClient(
         private const val FETCH_TIMEOUT_MS = 12_000L
         private const val PUBLISH_TIMEOUT_MS = 10_000L
         private const val NETWORK_TIMEOUT_MS = 10_000L
-        private const val FIRST_LOOKBACK_MS = 48 * 60 * 60_000L
-        private const val OVERLAP_MS = 5 * 60_000L
+        /**
+         * Always ask for the last 48 hours, like the phone. Gift wraps are backdated by up to 22 h
+         * on purpose (NIP-17), so "since my last check" would silently skip new messages.
+         */
+        private const val LOOKBACK_MS = 48 * 60 * 60_000L
         private const val MAX_AGE_SEC = 173_700L // 48 h + 15 min, as on the phone
         private const val REQUEST_CODE = 5502
 
@@ -128,9 +138,15 @@ class WatchNostrClient(
     private var running = false
 
     private val fetchLock = Mutex()
+    /** Events already handled, so a 48-hour re-fetch does not deliver or acknowledge twice. */
     private val seenEventIds = java.util.Collections.newSetFromMap(object : LinkedHashMap<String, Boolean>() {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Boolean>?) = size > 2_000
-    })
+    }).apply { addAll(prefs.getStringSet(KEY_SEEN, emptySet()).orEmpty()) }
+
+    private fun persistSeen() {
+        val recent = synchronized(seenEventIds) { seenEventIds.toList().takeLast(SEEN_PERSISTED).toSet() }
+        prefs.edit().putStringSet(KEY_SEEN, recent).apply()
+    }
 
     /** Persistent sockets for ALWAYS mode, keyed by relay URL. */
     private val liveSockets = ConcurrentHashMap<String, WebSocket>()
@@ -272,6 +288,17 @@ class WatchNostrClient(
         }
     }
 
+    /** Borrow an internet connection and a client bound to it. */
+    private suspend fun lease(): Lease? {
+        leaseProvider?.let { return it() }
+        val (network, callback) = acquireNetwork() ?: return null
+        val client = clientFor(network)
+        return Lease(client) {
+            runCatching { connectivity.unregisterNetworkCallback(callback) }
+            client.dispatcher.executorService.shutdown()
+        }
+    }
+
     private fun clientFor(network: Network): OkHttpClient = OkHttpClient.Builder()
         .socketFactory(network.socketFactory)
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -287,19 +314,17 @@ class WatchNostrClient(
         if (!fetchLock.tryLock()) return
         try {
             _status.value = _status.value.copy(checking = true, lastError = null)
-            val identity = NostrIdentityBridge.getCurrentNostrIdentity(context) ?: run {
+            val identity = identityProvider() ?: run {
                 _status.value = _status.value.copy(checking = false, lastError = "No internet identity")
                 return
             }
-            val (network, callback) = acquireNetwork() ?: run {
+            val lease = lease() ?: run {
                 _status.value = _status.value.copy(checking = false, lastError = "No internet connection")
                 return
             }
             try {
-                val since = prefs.getLong(KEY_SINCE, 0L).takeIf { it > 0 }?.minus(OVERLAP_MS)
-                    ?: (System.currentTimeMillis() - FIRST_LOOKBACK_MS)
-                val startedAt = System.currentTimeMillis()
-                val client = clientFor(network)
+                val since = System.currentTimeMillis() - LOOKBACK_MS
+                val client = lease.client
                 val subscription = "m-" + UUID.randomUUID().toString().take(8)
                 val request = NostrRequest.toJson(
                     NostrRequest.Subscribe(subscription, listOf(NostrFilter.giftWrapsFor(identity.publicKeyHex, since)))
@@ -329,15 +354,14 @@ class WatchNostrClient(
                     finished.count { it.second.await() }
                 } ?: finished.count { it.second.isCompleted && it.second.getCompleted() }
                 finished.forEach { (socket, _) -> socket.close(1000, null) }
-                client.dispatcher.executorService.shutdown()
-                if (reached > 0) prefs.edit().putLong(KEY_SINCE, startedAt).apply()
+                persistSeen()
                 _status.value = _status.value.copy(
                     checking = false,
                     lastCheckMs = System.currentTimeMillis(),
                     lastError = if (reached == 0) "Relays unreachable" else null
                 )
             } finally {
-                runCatching { connectivity.unregisterNetworkCallback(callback) }
+                lease.release()
             }
         } finally {
             if (_status.value.checking) _status.value = _status.value.copy(checking = false)
@@ -352,7 +376,7 @@ class WatchNostrClient(
         liveJob = scope.launch {
             var backoffMs = 5_000L
             while (active && _status.value.mode == Mode.ALWAYS) {
-                val identity = NostrIdentityBridge.getCurrentNostrIdentity(context)
+                val identity = identityProvider()
                 val acquired = if (identity != null) acquireNetwork() else null
                 if (identity == null || acquired == null) {
                     _status.value = _status.value.copy(lastError = "No internet connection")
@@ -364,8 +388,7 @@ class WatchNostrClient(
                 liveNetworkCallback = callback
                 val client = clientFor(network)
                 val closed = CompletableDeferred<Unit>()
-                val since = prefs.getLong(KEY_SINCE, 0L).takeIf { it > 0 }?.minus(OVERLAP_MS)
-                    ?: (System.currentTimeMillis() - FIRST_LOOKBACK_MS)
+                val since = System.currentTimeMillis() - LOOKBACK_MS
                 val request = NostrRequest.toJson(
                     NostrRequest.Subscribe("m-live", listOf(NostrFilter.giftWrapsFor(identity.publicKeyHex, since)))
                 )
@@ -380,8 +403,7 @@ class WatchNostrClient(
                         override fun onMessage(webSocket: WebSocket, text: String) {
                             when (val r = parse(text)) {
                                 is NostrResponse.Event -> handleGiftWrap(r.event, identity)
-                                is NostrResponse.EndOfStoredEvents ->
-                                    prefs.edit().putLong(KEY_SINCE, System.currentTimeMillis()).apply()
+                                is NostrResponse.EndOfStoredEvents -> persistSeen()
                                 else -> Unit
                             }
                         }
@@ -489,7 +511,7 @@ class WatchNostrClient(
         val recipientHex = senderNostrPubkey?.let { ContactIdentityResolver.nostrPubkeyHex(it) ?: it }
             ?: recipientKey(peerID)?.let { ContactIdentityResolver.nostrPubkeyHex(it) }
             ?: return false
-        val identity = NostrIdentityBridge.getCurrentNostrIdentity(context) ?: return false
+        val identity = identityProvider() ?: return false
         val receipt = NostrEmbeddedBitChat.encodeAckForNostrNoRecipient(NoisePayloadType.READ_RECEIPT, messageID)
             ?: return false
         return publish(NostrProtocol.createPrivateMessage(receipt, recipientHex, identity))
@@ -528,7 +550,7 @@ class WatchNostrClient(
         if (!running || suspended) return false
         val recipientKey = recipientKey(peerID) ?: return false
         val recipientHex = ContactIdentityResolver.nostrPubkeyHex(recipientKey) ?: return false
-        val identity = NostrIdentityBridge.getCurrentNostrIdentity(context) ?: return false
+        val identity = identityProvider() ?: return false
         val recipientPeerID = runCatching {
             FavoritesPersistenceService.shared.findPeerIDForNostrPubkey(recipientKey)
         }.getOrNull() ?: peerID.takeIf { ContactIdentityResolver.isMeshPeerId(it) } ?: return false
@@ -537,11 +559,11 @@ class WatchNostrClient(
         return publish(NostrProtocol.createPrivateMessage(embedded, recipientHex, identity))
     }
 
-    private suspend fun publish(events: List<NostrEvent>): Boolean {
+    internal suspend fun publish(events: List<NostrEvent>): Boolean {
         if (events.isEmpty()) return false
-        val (network, callback) = acquireNetwork() ?: return false
+        val lease = lease() ?: return false
         try {
-            val client = clientFor(network)
+            val client = lease.client
             val ids = events.map { it.id }.toSet()
             val payloads = events.map { NostrRequest.toJson(NostrRequest.Event(it)) }
             val accepted = CompletableDeferred<Boolean>()
@@ -553,7 +575,15 @@ class WatchNostrClient(
 
                     override fun onMessage(webSocket: WebSocket, text: String) {
                         val r = parse(text)
-                        if (r is NostrResponse.Ok && r.eventId in ids && r.accepted) accepted.complete(true)
+                        if (r is NostrResponse.Ok && r.eventId in ids) {
+                            if (r.accepted) accepted.complete(true) else Log.w(TAG, "$url refused: ${r.message}")
+                        } else if (r is NostrResponse.Notice) {
+                            Log.w(TAG, "$url notice: ${r.message}")
+                        }
+                    }
+
+                    override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                        Log.w(TAG, "$url failed: ${t.javaClass.simpleName} ${t.message}")
                     }
                 })
             }
@@ -561,10 +591,9 @@ class WatchNostrClient(
             // Give the other relays a moment to take it too before closing.
             delay(1_000)
             sockets.forEach { it.close(1000, null) }
-            client.dispatcher.executorService.shutdown()
             return ok
         } finally {
-            runCatching { connectivity.unregisterNetworkCallback(callback) }
+            lease.release()
         }
     }
 

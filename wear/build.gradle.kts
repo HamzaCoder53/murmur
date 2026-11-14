@@ -20,8 +20,8 @@ android {
         targetSdk = libs.versions.targetSdk.get().toInt()
         // Wear releases use a separate high range because Play requires every artifact in
         // one application ID to have a unique version code across all form factors.
-        versionCode = 1_000_000_008
-        versionName = "0.4.0"
+        versionCode = 1_000_000_009
+        versionName = "0.4.1"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -69,6 +69,9 @@ android {
 // Robolectric downloads its Android runtime outside Gradle dependency resolution.
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
     systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
+    // Opt-in end-to-end test against public Nostr relays (LiveRelayTest).
+    systemProperty("murmur.liveRelays", providers.gradleProperty("murmur.liveRelays").getOrElse("false"))
+    testLogging { showStandardStreams = providers.gradleProperty("murmur.liveRelays").isPresent }
 }
 
 composeCompiler {
