@@ -42,7 +42,9 @@ object MirrorProtocol {
         val key: String,
         /** A mesh peer ID to address the conversation by on the watch. */
         val peerID: String,
-        val messages: List<BitchatMessage>
+        val messages: List<BitchatMessage>,
+        /** Unread count on the phone; the watch shows the same. */
+        val unread: Int = 0
     )
 
     data class Snapshot(
@@ -50,8 +52,15 @@ object MirrorProtocol {
         val myNickname: String,
         val peers: List<Peer>,
         val publicMessages: List<BitchatMessage>,
-        val conversations: List<Conversation>
+        val conversations: List<Conversation>,
+        /** Photos and voice notes among the messages, by message ID; fetched separately. */
+        val media: Map<String, Media> = emptyMap()
     )
+
+    enum class MediaKind(val code: String) { IMAGE("image"), AUDIO("audio"), FILE("file") }
+
+    /** A message whose content is a file on the sending device. [extension] keeps its type. */
+    data class Media(val kind: MediaKind, val extension: String)
 
     sealed interface Command {
         val messageID: String
@@ -65,6 +74,27 @@ object MirrorProtocol {
             val peerID: String,
             val recipientNickname: String
         ) : Command
+
+        /** Watch asks for the media file of message [content]. */
+        data class FetchMedia(override val content: String) : Command {
+            override val messageID: String = content
+        }
+
+        /**
+         * Watch recorded a voice note (uploaded as a file with the same message ID); the phone sends
+         * it to [content] (a peer ID), or publicly when [content] is blank.
+         */
+        data class SendVoice(
+            override val messageID: String,
+            override val content: String,
+            val recipientNickname: String,
+            val extension: String
+        ) : Command
+
+        /** The conversation with [content] (a peer ID) was read on the watch. */
+        data class MarkRead(override val content: String) : Command {
+            override val messageID: String = ""
+        }
 
         /** Favorite or unfavorite a peer; [content] is the peer ID. */
         data class SetFavorite(override val content: String, val isFavorite: Boolean) : Command {
@@ -94,6 +124,10 @@ object MirrorProtocol {
         })
         put("t", m.timestamp.time)
         put("p", m.isPrivate)
+        mediaKindOf(m)?.let { kind ->
+            put("ty", kind.code)
+            put("x", m.content.substringAfterLast('.', "").lowercase().take(8))
+        }
         m.senderPeerID?.let { put("sp", it) }
         m.recipientNickname?.let { put("rn", it) }
         when (val st = m.deliveryStatus) {
@@ -126,6 +160,23 @@ object MirrorProtocol {
             recipientNickname = o.optString("rn", "").ifEmpty { null },
             deliveryStatus = status
         )
+    }
+
+    private fun mediaKindOf(m: BitchatMessage): MediaKind? = when (m.type) {
+        BitchatMessageType.Image -> MediaKind.IMAGE
+        BitchatMessageType.Audio -> MediaKind.AUDIO
+        BitchatMessageType.File -> MediaKind.FILE
+        else -> null
+    }
+
+    /** Media references for the messages in [array], by message ID. */
+    private fun mediaIn(array: JSONArray?, into: MutableMap<String, Media>) {
+        if (array == null) return
+        for (i in 0 until array.length()) {
+            val o = array.getJSONObject(i)
+            val kind = MediaKind.entries.firstOrNull { it.code == o.optString("ty") } ?: continue
+            into[o.getString("id")] = Media(kind, o.optString("x", ""))
+        }
     }
 
     private fun encodeMessages(list: List<BitchatMessage>) =
@@ -172,7 +223,7 @@ object MirrorProtocol {
         json.put("dm", JSONArray().apply {
             s.conversations.forEach { c ->
                 put(JSONObject().apply {
-                    put("k", c.key); put("p", c.peerID)
+                    put("k", c.key); put("p", c.peerID); put("u", c.unread)
                     put("m", encodeMessages(c.messages.takeLast(perConversationLimit)))
                 })
             }
@@ -195,15 +246,21 @@ object MirrorProtocol {
             val conversations = json.getJSONArray("dm").let { a ->
                 (0 until a.length()).map { i ->
                     val c = a.getJSONObject(i)
-                    Conversation(c.getString("k"), c.getString("p"), decodeMessages(c.getJSONArray("m")))
+                    Conversation(c.getString("k"), c.getString("p"), decodeMessages(c.getJSONArray("m")), c.optInt("u", 0))
                 }
+            }
+            val media = HashMap<String, Media>()
+            mediaIn(json.getJSONArray("pub"), media)
+            json.getJSONArray("dm").let { a ->
+                for (i in 0 until a.length()) mediaIn(a.getJSONObject(i).getJSONArray("m"), media)
             }
             Snapshot(
                 myPeerID = json.getString("me"),
                 myNickname = json.optString("nick", ""),
                 peers = peers,
                 publicMessages = decodeMessages(json.getJSONArray("pub")),
-                conversations = conversations
+                conversations = conversations,
+                media = media
             )
         }
     } catch (_: Exception) {
@@ -223,6 +280,9 @@ object MirrorProtocol {
             }
             is Command.SetNickname -> put("op", "nick")
             is Command.SetFavorite -> { put("op", "fav"); put("f", command.isFavorite) }
+            is Command.MarkRead -> put("op", "read")
+            is Command.FetchMedia -> put("op", "fetch")
+            is Command.SendVoice -> { put("op", "voice"); put("n", command.recipientNickname); put("x", command.extension) }
         }
     }.toString().toByteArray(Charsets.UTF_8)
 
@@ -230,12 +290,19 @@ object MirrorProtocol {
         val json = JSONObject(String(data, Charsets.UTF_8))
         val id = json.getString("id")
         val content = json.getString("c")
+        val op = json.optString("op")
         when {
-            json.optInt("v", -1) != VERSION || content.isBlank() -> null
+            json.optInt("v", -1) != VERSION -> null
+            // A voice note to the public chat has no recipient, so blank content is allowed.
+            op == "voice" -> if (id.isBlank()) null else
+                Command.SendVoice(id, content, json.optString("n", ""), json.optString("x", "m4a").take(8))
+            content.isBlank() -> null
+            op == "fetch" -> Command.FetchMedia(content)
             json.optString("op") == "pub" -> Command.SendPublic(id, content)
             json.optString("op") == "dm" -> Command.SendPrivate(id, content, json.getString("to"), json.optString("n", ""))
             json.optString("op") == "nick" -> Command.SetNickname(content.trim().take(MAX_NICKNAME))
             json.optString("op") == "fav" -> Command.SetFavorite(content, json.optBoolean("f"))
+            json.optString("op") == "read" -> Command.MarkRead(content)
             else -> null
         }
     } catch (_: Exception) {

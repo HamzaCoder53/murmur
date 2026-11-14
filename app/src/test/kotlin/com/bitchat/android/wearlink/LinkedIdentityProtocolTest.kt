@@ -144,6 +144,35 @@ class LinkedIdentityProtocolTest {
     }
 
     @Test
+    fun `media messages carry their kind and extension and stay placeholders`() {
+        val photo = msg("img").copy(type = BitchatMessageType.Image, content = "/data/x/photo.JPG")
+        val voice = msg("vn").copy(type = BitchatMessageType.Audio, content = "/data/x/note.m4a")
+        val snapshot = MirrorProtocol.Snapshot(
+            "me", "n", emptyList(), listOf(photo.copy(isPrivate = false)),
+            listOf(MirrorProtocol.Conversation("k", "1122334455667788", listOf(voice), unread = 3))
+        )
+
+        val decoded = MirrorProtocol.decodeSnapshot(MirrorProtocol.encodeSnapshot(snapshot))!!
+
+        assertEquals(MirrorProtocol.Media(MirrorProtocol.MediaKind.IMAGE, "jpg"), decoded.media["img"])
+        assertEquals(MirrorProtocol.Media(MirrorProtocol.MediaKind.AUDIO, "m4a"), decoded.media["vn"])
+        assertEquals("[photo]", decoded.publicMessages.single().content)
+        assertEquals(3, decoded.conversations.single().unread)
+    }
+
+    @Test
+    fun `media and read commands round trip`() {
+        val commands = listOf(
+            MirrorProtocol.Command.FetchMedia("img-1"),
+            MirrorProtocol.Command.SendVoice("vn-1", "1122334455667788", "alice", "m4a"),
+            MirrorProtocol.Command.SendVoice("vn-2", "", "", "m4a"),
+            MirrorProtocol.Command.MarkRead("1122334455667788")
+        )
+
+        commands.forEach { assertEquals(it, MirrorProtocol.decodeCommand(MirrorProtocol.encodeCommand(it))) }
+    }
+
+    @Test
     fun `an empty command is rejected`() {
         assertNull(MirrorProtocol.decodeCommand(MirrorProtocol.encodeCommand(MirrorProtocol.Command.SendPublic("id", " "))))
     }

@@ -28,10 +28,22 @@ object WearChatState {
         appInForeground = inForeground
     }
 
+    /** Told when a DM thread is shown, so the mesh service can mark it read and send receipts. */
+    @Volatile
+    var onDmShown: ((String) -> Unit)? = null
+
     @Synchronized
     fun openDm(peerID: String) {
         openDmPeer = peerID
         _unreadDms.value = _unreadDms.value - peerID
+        onDmShown?.invoke(peerID)
+    }
+
+    /** Mirror the linked phone's unread count for a conversation (unless it is open here). */
+    @Synchronized
+    fun setUnread(peerID: String, count: Int) {
+        if (appInForeground && openDmPeer == peerID) return
+        _unreadDms.value = if (count <= 0) _unreadDms.value - peerID else _unreadDms.value + (peerID to count)
     }
 
     @Synchronized

@@ -483,6 +483,18 @@ class WatchNostrClient(
         }
     }
 
+    /** Tell the sender, over the internet, that their message was read. */
+    suspend fun sendReadReceipt(messageID: String, peerID: String, senderNostrPubkey: String?): Boolean {
+        if (!running || suspended) return false
+        val recipientHex = senderNostrPubkey?.let { ContactIdentityResolver.nostrPubkeyHex(it) ?: it }
+            ?: recipientKey(peerID)?.let { ContactIdentityResolver.nostrPubkeyHex(it) }
+            ?: return false
+        val identity = NostrIdentityBridge.getCurrentNostrIdentity(context) ?: return false
+        val receipt = NostrEmbeddedBitChat.encodeAckForNostrNoRecipient(NoisePayloadType.READ_RECEIPT, messageID)
+            ?: return false
+        return publish(NostrProtocol.createPrivateMessage(receipt, recipientHex, identity))
+    }
+
     private suspend fun sendAck(messageID: String, recipientHex: String, identity: NostrIdentity) {
         val ack = NostrEmbeddedBitChat.encodeAckForNostrNoRecipient(NoisePayloadType.DELIVERED, messageID) ?: return
         publish(NostrProtocol.createPrivateMessage(ack, recipientHex, identity))

@@ -54,6 +54,9 @@ class LinkedWatchCoordinator(
         private const val PUBLIC_LIMIT = 60
         private const val CONVERSATION_LIMIT = 20
         private const val PER_CONVERSATION_LIMIT = 40
+        private const val MAX_MEDIA_BYTES = 10L * 1024 * 1024
+        private const val UPLOAD_WAIT_MS = 120_000L
+        private const val MEDIA_DIR = "murmur_watch_media"
 
         const val ACTION_APPROVE = "xfuturehb.murmur.WATCH_LINK_APPROVE"
         const val ACTION_DENY = "xfuturehb.murmur.WATCH_LINK_DENY"
@@ -68,6 +71,11 @@ class LinkedWatchCoordinator(
     private val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private var pushJob: Job? = null
 
+    /** Voice notes uploaded by a linked watch, by message ID, waiting for (or past) their command. */
+    private val uploads = java.util.concurrent.ConcurrentHashMap<String, java.io.File>()
+    private val pendingVoice = java.util.concurrent.ConcurrentHashMap<String, MirrorProtocol.Command.SendVoice>()
+    private val mediaDir: java.io.File get() = java.io.File(appContext.filesDir, MEDIA_DIR)
+
     fun isLinked(nodeId: String): Boolean = nodeId in linkedNodes()
 
     private fun linkedNodes(): Set<String> = prefs.getStringSet(KEY_NODES, emptySet()).orEmpty()
@@ -81,12 +89,27 @@ class LinkedWatchCoordinator(
     fun start() {
         current = this
         channel.setControlListener(::onControl)
+        channel.setFileListener(
+            destination = { node, path ->
+                if (isLinked(node) && path.startsWith(WearLinkContract.FILE_UPLOAD)) {
+                    java.io.File(mediaDir, path.removePrefix(WearLinkContract.FILE_UPLOAD).safeFileName() + ".upload")
+                } else {
+                    null
+                }
+            },
+            onReceived = { _, path, file ->
+                val id = path.removePrefix(WearLinkContract.FILE_UPLOAD)
+                uploads[id] = file
+                pendingVoice.remove(id)?.let { command -> scope.launch { sendVoice(command, file) } }
+            }
+        )
         if (pushJob == null) pushJob = scope.launch { pushLoop() }
     }
 
     fun stop() {
         if (current === this) current = null
         channel.setControlListener(null)
+        channel.setFileListener(null, null)
         pushJob?.cancel()
         pushJob = null
     }
@@ -112,7 +135,7 @@ class LinkedWatchCoordinator(
                 }
             }
             WearLinkContract.CTL_MIRROR_COMMAND -> if (isLinked(nodeId)) {
-                MirrorProtocol.decodeCommand(data)?.let { command -> scope.launch { execute(command) } }
+                MirrorProtocol.decodeCommand(data)?.let { command -> scope.launch { execute(command, nodeId) } }
             }
         }
     }
@@ -252,7 +275,10 @@ class LinkedWatchCoordinator(
             .map { (key, messages) ->
                 val peerID = messages.lastOrNull { it.senderPeerID != null && it.senderPeerID != me }
                     ?.senderPeerID ?: key
-                MirrorProtocol.Conversation(key, peerID, messages.takeLast(PER_CONVERSATION_LIMIT))
+                MirrorProtocol.Conversation(
+                    key, peerID, messages.takeLast(PER_CONVERSATION_LIMIT),
+                    unread = AppStateStore.unreadPrivateMessageCounts.value[key] ?: 0
+                )
             }
         return MirrorProtocol.Snapshot(
             myPeerID = me,
@@ -264,11 +290,29 @@ class LinkedWatchCoordinator(
     }
 
     /** Send a message the watch wrote, exactly as if it had been typed on the phone. */
-    private suspend fun execute(command: MirrorProtocol.Command) {
+    private suspend fun execute(command: MirrorProtocol.Command, nodeId: String) {
         val mesh = MeshServiceHolder.getUnifiedOrCreate(appContext)
         val me = mesh.myPeerID
         val nickname = NicknameProvider.getNickname(appContext, me)
         when (command) {
+            is MirrorProtocol.Command.FetchMedia -> sendMediaTo(nodeId, command.content)
+            is MirrorProtocol.Command.SendVoice -> {
+                val file = uploads[command.messageID]
+                if (file != null) {
+                    sendVoice(command, file)
+                } else {
+                    // The file is still on its way; send when it lands (or give up after a while).
+                    pendingVoice[command.messageID] = command
+                    scope.launch {
+                        delay(UPLOAD_WAIT_MS)
+                        pendingVoice.remove(command.messageID)
+                    }
+                }
+            }
+            is MirrorProtocol.Command.MarkRead -> {
+                markConversationRead(mesh, command.content)
+                pushSnapshot(reachableLinkedNodes())
+            }
             is MirrorProtocol.Command.SetFavorite -> {
                 setFavorite(mesh, command.content, command.isFavorite)
                 pushSnapshot(reachableLinkedNodes())
@@ -324,6 +368,36 @@ class LinkedWatchCoordinator(
         }
     }
 
+    /**
+     * The watch showed this conversation: mark it read here too and tell the sender, by whatever
+     * route reaches them (mesh or internet), as reading it on the phone would.
+     */
+    private suspend fun markConversationRead(mesh: com.bitchat.android.mesh.MeshService, peerID: String) {
+        val me = mesh.myPeerID
+        val conversationID = ContactDirectory.canonicalConversationId(peerID)
+        val messages = AppStateStore.privateMessages.value.entries
+            .filter { ContactDirectory.canonicalConversationId(it.key).equals(conversationID, ignoreCase = true) }
+            .flatMap { it.value }
+        val unreadIncoming = messages.filter {
+            it.senderPeerID != me && it.sender != "system" && !AppStateStore.isPrivateMessageRead(it.id)
+        }
+        val router = MessageRouter.getInstance(appContext, mesh)
+        unreadIncoming.forEach { message ->
+            try {
+                router.sendReadReceipt(
+                    com.bitchat.android.model.ReadReceipt(originalMessageID = message.id, readerPeerID = me),
+                    message.senderPeerID ?: conversationID
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Read receipt not sent: ${e.message}")
+            }
+        }
+        if (!AppStateStore.setPrivateConversationRead(conversationID, true)) {
+            // History off (no database): mark each message instead.
+            unreadIncoming.forEach { AppStateStore.markPrivateMessageRead(it.id) }
+        }
+    }
+
     /** Favorite exactly as the phone's own Favorite button does (list, relationship, notice). */
     private fun setFavorite(mesh: com.bitchat.android.mesh.MeshService, peerID: String, isFavorite: Boolean) {
         val info = mesh.getPeerInfo(peerID)
@@ -344,6 +418,59 @@ class LinkedWatchCoordinator(
             Log.w(TAG, "Favorite notice not sent: ${e.message}")
         }
     }
+
+    /** Send the watch the photo or voice note of message [messageID]. */
+    private fun sendMediaTo(nodeId: String, messageID: String) {
+        val message = AppStateStore.publicMessages.value.firstOrNull { it.id == messageID }
+            ?: AppStateStore.privateMessages.value.values.asSequence().flatten().firstOrNull { it.id == messageID }
+            ?: return
+        if (message.type == com.bitchat.android.model.BitchatMessageType.Message) return
+        val file = java.io.File(message.content)
+        if (!file.isFile || file.length() > MAX_MEDIA_BYTES) return
+        channel.sendFile(nodeId, WearLinkContract.FILE_MEDIA + messageID, file)
+    }
+
+    /** Send a voice note recorded on the watch as if it had been recorded on the phone. */
+    private suspend fun sendVoice(command: MirrorProtocol.Command.SendVoice, upload: java.io.File) {
+        uploads.remove(command.messageID)
+        if (AppStateStore.hasSeenMessage(command.messageID)) return
+        val extension = command.extension.ifBlank { "m4a" }
+        val file = java.io.File(mediaDir, command.messageID.safeFileName() + "." + extension)
+        if (!upload.renameTo(file)) {
+            upload.copyTo(file, overwrite = true)
+            upload.delete()
+        }
+        val mesh = MeshServiceHolder.getUnifiedOrCreate(appContext)
+        val me = mesh.myPeerID
+        val nickname = NicknameProvider.getNickname(appContext, me)
+        val packet = com.bitchat.android.model.BitchatFilePacket(
+            fileName = file.name,
+            fileSize = file.length(),
+            mimeType = "audio/mp4",
+            content = file.readBytes()
+        )
+        val echo = BitchatMessage(
+            id = command.messageID,
+            sender = nickname,
+            content = file.absolutePath,
+            type = com.bitchat.android.model.BitchatMessageType.Audio,
+            timestamp = Date(),
+            isPrivate = command.content.isNotBlank(),
+            recipientNickname = command.recipientNickname.ifBlank { null },
+            senderPeerID = me,
+            deliveryStatus = DeliveryStatus.Sent
+        )
+        if (command.content.isBlank()) {
+            AppStateStore.addPublicMessage(echo)
+            mesh.sendFileBroadcast(packet)
+        } else {
+            val conversationID = ContactDirectory.canonicalConversationId(command.content)
+            AppStateStore.addPrivateMessageDurably(conversationID, echo, forceRead = true)
+            mesh.sendFilePrivate(command.content, packet)
+        }
+    }
+
+    private fun String.safeFileName(): String = filter { it.isLetterOrDigit() || it == '-' || it == '_' }.take(64)
 
     /** Record what the watch sent and received while it was away from the phone. */
     private suspend fun mergeBacklog(backlog: MirrorProtocol.Snapshot) {

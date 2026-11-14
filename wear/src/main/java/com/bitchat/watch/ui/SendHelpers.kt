@@ -127,8 +127,25 @@ internal fun sendPrivateMessage(
 internal fun sendVoiceNote(mesh: WearMeshService, peerID: String?, path: String) {
     val file = File(path)
     if (!file.isFile) return
-    // Voice notes are not relayed through the phone in linked mode yet.
-    val unsupported = mesh.isMirrored
+    if (mesh.isMirrored) {
+        // Linked and next to the phone: upload it; the phone sends it and shows it too.
+        val messageID = java.util.UUID.randomUUID().toString().uppercase()
+        val recipient = peerID?.let { mesh.getPeerNickname(it) ?: it.take(8) }.orEmpty()
+        val handed = mesh.linkedClient.sendVoice(messageID, peerID, recipient, file)
+        val echo = BitchatMessage(
+            id = messageID,
+            sender = mesh.nickname,
+            content = path,
+            type = BitchatMessageType.Audio,
+            timestamp = Date(),
+            isPrivate = peerID != null,
+            senderPeerID = mesh.myPeerID,
+            deliveryStatus = if (handed) DeliveryStatus.Sending else DeliveryStatus.Failed("Phone not reachable")
+        )
+        if (peerID == null) AppStateStore.addPublicMessage(echo) else AppStateStore.addPrivateMessage(peerID, echo, forceRead = true)
+        return
+    }
+    val unsupported = false
     val packet = BitchatFilePacket(
         fileName = file.name,
         fileSize = file.length(),

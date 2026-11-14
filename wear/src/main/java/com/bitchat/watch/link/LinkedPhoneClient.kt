@@ -43,6 +43,7 @@ class LinkedPhoneClient(
         private const val KEY_NICKNAME = "nickname"
         private const val MIRROR_TRANSPORT = "MIRROR"
         private const val RESTART_DELAY_MS = 2_500L
+        private const val MEDIA_DIR = "mirror_media"
 
         fun isLinked(context: Context): Boolean =
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_LINKED, false)
@@ -85,12 +86,45 @@ class LinkedPhoneClient(
     /** messageID -> status signature last applied, so unchanged messages are not rewritten. */
     private val applied = HashMap<String, String>()
 
+    /** A photo or voice note waiting for its file from the phone. */
+    private data class PendingMedia(
+        val conversationPeerID: String?,
+        val message: BitchatMessage,
+        val media: MirrorProtocol.Media
+    )
+
+    private val pendingMedia = java.util.concurrent.ConcurrentHashMap<String, PendingMedia>()
+    private val requestedMedia = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+
+    /** Voice notes recorded on this watch, by message ID: shown from here, never fetched back. */
+    private val ownMedia = java.util.concurrent.ConcurrentHashMap<String, java.io.File>()
+
+    private val mediaDir: java.io.File get() = java.io.File(context.filesDir, MEDIA_DIR)
+
+    private fun mirrorFile(messageID: String, extension: String): java.io.File = java.io.File(
+        mediaDir,
+        messageID.filter { it.isLetterOrDigit() || it == '-' || it == '_' }.take(64) +
+            if (extension.isBlank()) "" else ".$extension"
+    )
+
     fun start() {
         channel.setControlListener(::onControl)
+        if (linked) {
+            channel.setFileListener(
+                destination = { _, path ->
+                    if (!path.startsWith(WearLinkContract.FILE_MEDIA)) null else {
+                        val id = path.removePrefix(WearLinkContract.FILE_MEDIA)
+                        pendingMedia[id]?.let { mirrorFile(id, it.media.extension) }
+                    }
+                },
+                onReceived = { _, path, file -> onMediaReceived(path.removePrefix(WearLinkContract.FILE_MEDIA), file) }
+            )
+        }
     }
 
     fun stop() {
         channel.setControlListener(null)
+        channel.setFileListener(null, null)
     }
 
     private fun phoneNode(): String? = channel.reachableNodes.value.firstOrNull()
@@ -241,11 +275,14 @@ class LinkedPhoneClient(
         syncFavorites(snapshot.peers)
         AppStateStore.setTransportPeers(MIRROR_TRANSPORT, snapshot.peers.map { it.peerID })
         synchronized(applied) {
-            snapshot.publicMessages.forEach { message ->
+            snapshot.publicMessages.forEach { raw ->
+                val message = withMedia(raw, snapshot.media[raw.id], conversationPeerID = null)
                 if (changed(message)) AppStateStore.upsertPublicMessage(message)
             }
             snapshot.conversations.forEach { conversation ->
-                conversation.messages.forEach { message ->
+                com.bitchat.watch.ui.WearChatState.setUnread(conversation.peerID, conversation.unread)
+                conversation.messages.forEach { raw ->
+                    val message = withMedia(raw, snapshot.media[raw.id], conversation.peerID)
                     if (changed(message)) {
                         AppStateStore.upsertPrivateMessage(
                             conversation.peerID,
@@ -256,6 +293,51 @@ class LinkedPhoneClient(
                 }
             }
         }
+    }
+
+    /**
+     * A photo or voice note shows its file once it is on the watch; until then the placeholder
+     * text stays and the file is requested from the phone (once).
+     */
+    private fun withMedia(
+        message: BitchatMessage,
+        media: MirrorProtocol.Media?,
+        conversationPeerID: String?
+    ): BitchatMessage {
+        if (media == null || media.kind == MirrorProtocol.MediaKind.FILE) return message
+        val local = ownMedia[message.id] ?: mirrorFile(message.id, media.extension).takeIf { it.isFile }
+        if (local != null) return message.copy(type = typeOf(media.kind), content = local.absolutePath)
+        pendingMedia[message.id] = PendingMedia(conversationPeerID, message, media)
+        if (requestedMedia.add(message.id)) sendCommand(MirrorProtocol.Command.FetchMedia(message.id))
+        return message
+    }
+
+    private fun typeOf(kind: MirrorProtocol.MediaKind) = when (kind) {
+        MirrorProtocol.MediaKind.IMAGE -> com.bitchat.android.model.BitchatMessageType.Image
+        MirrorProtocol.MediaKind.AUDIO -> com.bitchat.android.model.BitchatMessageType.Audio
+        MirrorProtocol.MediaKind.FILE -> com.bitchat.android.model.BitchatMessageType.File
+    }
+
+    private fun onMediaReceived(messageID: String, file: java.io.File) {
+        val pending = pendingMedia.remove(messageID) ?: return
+        val message = pending.message.copy(type = typeOf(pending.media.kind), content = file.absolutePath)
+        synchronized(applied) {
+            changed(message)
+            if (pending.conversationPeerID == null) {
+                AppStateStore.upsertPublicMessage(message)
+            } else {
+                AppStateStore.upsertPrivateMessage(pending.conversationPeerID, message, forceRead = true)
+            }
+        }
+    }
+
+    /** Upload a voice note recorded on the watch; the phone sends it and shows it too. */
+    fun sendVoice(messageID: String, peerID: String?, recipientNickname: String, file: java.io.File): Boolean {
+        val node = phoneNode() ?: return false
+        ownMedia[messageID] = file
+        if (!channel.sendFile(node, WearLinkContract.FILE_UPLOAD + messageID, file)) return false
+        val extension = file.extension.ifBlank { "m4a" }
+        return sendCommand(MirrorProtocol.Command.SendVoice(messageID, peerID.orEmpty(), recipientNickname, extension))
     }
 
     private fun changed(message: BitchatMessage): Boolean {
@@ -275,6 +357,9 @@ class LinkedPhoneClient(
     fun noiseKey(peerID: String): ByteArray? = mirrorPeers[peerID]?.noiseKeyHex?.let { hex ->
         runCatching { hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray() }.getOrNull()
     }
+
+    /** Tell the phone this conversation was read on the watch. */
+    fun markRead(peerID: String): Boolean = sendCommand(MirrorProtocol.Command.MarkRead(peerID))
 
     /** Ask the phone to favorite or unfavorite a peer. */
     fun setFavorite(peerID: String, isFavorite: Boolean): Boolean =

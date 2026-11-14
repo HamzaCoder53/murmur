@@ -39,6 +39,13 @@ object WearLinkContract {
     /** Watch to phone: send a message on the watch's behalf (MirrorProtocol). */
     const val CTL_MIRROR_COMMAND = CONTROL_PREFIX + "mirror-cmd"
 
+    /** File transfers (photos, voice notes) between a linked phone and watch. */
+    const val FILE_PREFIX = "/murmur/v1/file/"
+    /** Phone to watch: the media file of message <id>. */
+    const val FILE_MEDIA = FILE_PREFIX + "media/"
+    /** Watch to phone: a voice note recorded on the watch, message <id>. */
+    const val FILE_UPLOAD = FILE_PREFIX + "upload/"
+
     private const val LINK_ADDRESS_PREFIX = "wear:"
 
     /** Relay address and ingress link id for packets that arrived over the tunnel from [nodeId]. */

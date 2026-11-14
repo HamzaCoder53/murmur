@@ -30,4 +30,16 @@ interface WearLinkChannel {
 
     /** Receives control messages; may be called on any thread. */
     fun setControlListener(listener: ((nodeId: String, path: String, data: ByteArray) -> Unit)?) = Unit
+
+    /** Stream [file] to [nodeId] on a [WearLinkContract.FILE_PREFIX] path. */
+    fun sendFile(nodeId: String, path: String, file: java.io.File): Boolean = false
+
+    /**
+     * Receive files: [destination] picks where an incoming path is written (null refuses it), and
+     * [onReceived] is called once a file arrived completely.
+     */
+    fun setFileListener(
+        destination: ((nodeId: String, path: String) -> java.io.File?)?,
+        onReceived: ((nodeId: String, path: String, file: java.io.File) -> Unit)?
+    ) = Unit
 }

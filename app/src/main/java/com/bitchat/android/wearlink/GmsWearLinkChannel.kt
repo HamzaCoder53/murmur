@@ -4,7 +4,9 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.net.Uri
 import com.google.android.gms.wearable.CapabilityClient
+import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.CapabilityInfo
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
@@ -55,6 +57,76 @@ class GmsWearLinkChannel(
         runCatching { Wearable.getCapabilityClient(appContext) }.getOrNull()
     private val messageClient: MessageClient? =
         runCatching { Wearable.getMessageClient(appContext) }.getOrNull()
+    private val channelClient: ChannelClient? =
+        runCatching { Wearable.getChannelClient(appContext) }.getOrNull()
+
+    @Volatile
+    private var fileDestination: ((String, String) -> java.io.File?)? = null
+
+    @Volatile
+    private var fileReceived: ((String, String, java.io.File) -> Unit)? = null
+
+    /** Incoming channels being written, so completion can be reported with their file. */
+    private val incoming = java.util.concurrent.ConcurrentHashMap<String, java.io.File>()
+
+    private val channelCallback = object : ChannelClient.ChannelCallback() {
+        override fun onChannelOpened(channel: ChannelClient.Channel) {
+            val path = channel.path
+            if (!path.startsWith(WearLinkContract.FILE_PREFIX)) return
+            val target = try {
+                fileDestination?.invoke(channel.nodeId, path)
+            } catch (e: Exception) {
+                null
+            }
+            if (target == null) {
+                channelClient?.close(channel)
+                return
+            }
+            target.parentFile?.mkdirs()
+            incoming[path + "@" + channel.nodeId] = target
+            channelClient?.receiveFile(channel, Uri.fromFile(target), false)
+        }
+
+        override fun onInputClosed(channel: ChannelClient.Channel, closeReason: Int, appSpecificErrorCode: Int) {
+            val target = incoming.remove(channel.path + "@" + channel.nodeId) ?: return
+            channelClient?.close(channel)
+            if (closeReason == ChannelClient.ChannelCallback.CLOSE_REASON_NORMAL && target.length() > 0) {
+                try {
+                    fileReceived?.invoke(channel.nodeId, channel.path, target)
+                } catch (e: Exception) {
+                    Log.w(TAG, "File handler failed: ${e.message}")
+                }
+            } else {
+                target.delete()
+            }
+        }
+
+        override fun onOutputClosed(channel: ChannelClient.Channel, closeReason: Int, appSpecificErrorCode: Int) {
+            channelClient?.close(channel)
+        }
+    }
+
+    override fun setFileListener(
+        destination: ((nodeId: String, path: String) -> java.io.File?)?,
+        onReceived: ((nodeId: String, path: String, file: java.io.File) -> Unit)?
+    ) {
+        fileDestination = destination
+        fileReceived = onReceived
+    }
+
+    override fun sendFile(nodeId: String, path: String, file: java.io.File): Boolean {
+        val client = channelClient ?: return false
+        if (!started || !path.startsWith(WearLinkContract.FILE_PREFIX) || !file.isFile) return false
+        return try {
+            client.openChannel(nodeId, path)
+                .addOnSuccessListener { channel -> client.sendFile(channel, Uri.fromFile(file)) }
+                .addOnFailureListener { error -> Log.d(TAG, "File send failed: ${error.message}") }
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "File send rejected: ${e.message}")
+            false
+        }
+    }
 
     private val _reachableNodes = MutableStateFlow<Set<String>>(emptySet())
     override val reachableNodes: StateFlow<Set<String>> = _reachableNodes.asStateFlow()
@@ -114,6 +186,7 @@ class GmsWearLinkChannel(
             capabilityClient?.addLocalCapability(localCapability)
             capabilityClient?.addListener(capabilityListener, remoteCapability)
             messageClient?.addListener(messageListener)
+            channelClient?.registerChannelCallback(channelCallback)
         }
         refreshReachableNodes()
         handler.postDelayed(poll, POLL_INTERVAL_MS)
@@ -127,6 +200,7 @@ class GmsWearLinkChannel(
             capabilityClient?.removeLocalCapability(localCapability)
             capabilityClient?.removeListener(capabilityListener, remoteCapability)
             messageClient?.removeListener(messageListener)
+            channelClient?.unregisterChannelCallback(channelCallback)
         }
         _reachableNodes.value = emptySet()
     }

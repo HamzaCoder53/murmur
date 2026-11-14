@@ -262,6 +262,7 @@ class WearMeshService private constructor(private val context: Context) {
             ProcessLifecycleOwner.get().lifecycle.addObserver(foregroundObserver)
         }
         linkedClient.onNicknameFromPhone = { name -> applyNickname(name.trim().take(32)) }
+        com.bitchat.watch.ui.WearChatState.onDmShown = { peerID -> markConversationRead(peerID) }
     }
 
     private inner class BleTransport : MeshTransport {
@@ -391,6 +392,12 @@ class WearMeshService private constructor(private val context: Context) {
                 val peer = message.senderPeerID ?: return false
                 if (!AppStateStore.addPrivateMessage(peer, message)) return false
                 try { onPrivateMessage?.invoke(message) } catch (_: Exception) { }
+                // Arrived while that chat is on screen: it has been read.
+                if (com.bitchat.watch.ui.WearChatState.appInForeground &&
+                    com.bitchat.watch.ui.WearChatState.openDmPeer == peer
+                ) {
+                    serviceScope.launch { markConversationRead(peer) }
+                }
                 true
             }
             !SpamFilter.isLocalNotice(message) &&
@@ -434,6 +441,7 @@ class WearMeshService private constructor(private val context: Context) {
             if (linkedClient.linked) linkChannel.start() else phoneLink.start()
             linkModeController.start()
             internet.start()
+            com.bitchat.watch.glance.GlanceUpdater.start(context, serviceScope, this)
             outboxJob = serviceScope.launch {
                 while (true) {
                     delay(DmOutbox.FIRST_RETRY_MS)
@@ -453,6 +461,8 @@ class WearMeshService private constructor(private val context: Context) {
             if (!isActive) return
             isActive = false
             internet.stop()
+            com.bitchat.watch.glance.GlanceUpdater.stop()
+            com.bitchat.watch.glance.GlanceUpdater.push(context)
             outboxJob?.cancel()
             outboxJob = null
             linkModeController.stop()
@@ -538,6 +548,36 @@ class WearMeshService private constructor(private val context: Context) {
             // disableTransport keeps the manager reusable for the next standalone period.
             connectionManager.disableTransport()
             bluetoothRunning = false
+        }
+    }
+
+    /**
+     * A private chat was shown on the watch: mark it read and tell the sender. Linked and next to
+     * the phone, the phone does both; otherwise the receipt goes over Bluetooth if the sender is in
+     * reach, or over the internet if that is how the message came (or the only way to them).
+     */
+    fun markConversationRead(peerID: String) {
+        if (!isActive) return
+        if (isMirrored) {
+            linkedClient.markRead(peerID)
+            return
+        }
+        val conversationID = com.bitchat.android.services.ContactDirectory.canonicalConversationId(peerID)
+        val unread = AppStateStore.privateMessages.value.entries
+            .filter {
+                com.bitchat.android.services.ContactDirectory.canonicalConversationId(it.key)
+                    .equals(conversationID, ignoreCase = true)
+            }
+            .flatMap { it.value }
+            .filter { it.senderPeerID != myPeerID && it.sender != "system" && !AppStateStore.isPrivateMessageRead(it.id) }
+        unread.forEach { message ->
+            AppStateStore.markPrivateMessageRead(message.id)
+            val sender = message.senderPeerID ?: peerID
+            if (message.senderNostrPubkey == null && isPeerReachable(sender) && hasEstablishedSession(sender)) {
+                meshCore.sendReadReceipt(message.id, sender, nickname)
+            } else {
+                serviceScope.launch { internet.sendReadReceipt(message.id, sender, message.senderNostrPubkey) }
+            }
         }
     }
 

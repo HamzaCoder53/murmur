@@ -20,8 +20,8 @@ android {
         targetSdk = libs.versions.targetSdk.get().toInt()
         // Wear releases use a separate high range because Play requires every artifact in
         // one application ID to have a unique version code across all form factors.
-        versionCode = 1_000_000_007
-        versionName = "0.3.1"
+        versionCode = 1_000_000_008
+        versionName = "0.4.0"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -216,6 +216,12 @@ dependencies {
     implementation(libs.androidx.wear.compose.material3)
     implementation(libs.androidx.wear.tooling.preview)
     implementation(libs.androidx.wear.ongoing)
+    // Tile and watch-face complication (unread, nearby, link)
+    implementation(libs.androidx.wear.tiles)
+    implementation(libs.androidx.wear.protolayout)
+    implementation(libs.androidx.wear.protolayout.expression)
+    implementation(libs.androidx.wear.complications.data.source)
+    implementation(libs.androidx.concurrent.futures)
     implementation(libs.androidx.compose.material.icons.extended)
 
     // Lifecycle
