@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Murmur: Privacy Policy</title>
+<style>
+  body { font: 16px/1.6 -apple-system, system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; color: #222; }
+  h1 { font-weight: 500; margin-bottom: 0.2em; }
+  h2 { font-weight: 500; margin-top: 1.8em; }
+  ul { padding-left: 1.3em; }
+</style>
+</head>
+<body>
+<h1>Murmur Privacy Policy</h1>
+<p><em>Last updated: 14 November 2026</em></p>
+
+<p>Murmur (<code>xfuturehb.murmur</code>) is an open-source, serverless peer-to-peer mesh messaging application for Android phones and Wear OS watches, forked from <a href="https://github.com/permissionlesstech/bitchat-android">bitchat-android</a> and published by Hamza Bharmal.</p>
+
+<h2>Summary</h2>
+<p><strong>We do not collect, store, sell, or share your personal information on any developer-controlled servers.</strong></p>
+<ul>
+  <li><strong>No accounts or registration:</strong> No phone number, email address, or profile is required.</li>
+  <li><strong>No analytics, ads, or telemetry:</strong> Murmur contains no advertising SDKs, analytics, or crash-tracking services.</li>
+  <li><strong>Bluetooth Mesh Chat:</strong> Offline peer-to-peer chat over Bluetooth Low Energy (and local Wi-Fi Aware when enabled) with Noise end-to-end encryption for private messages.</li>
+  <li><strong>Wear OS Phone-Watch Tunnel:</strong> When a Murmur Wear OS watch is paired with your phone, encrypted Bitchat/Murmur mesh packets can be relayed over Google Play Services Wearable Data Layer between your own watch and phone.</li>
+  <li><strong>Geohash Channels (Optional):</strong> Uses coarse geographic geohashes over internet Nostr relays (optionally routed over Tor) to join regional channels and deliver fallback encrypted direct messages.</li>
+</ul>
+
+<h2>Data Stored Locally on Your Device</h2>
+<ul>
+  <li><strong>Cryptographic identity keys:</strong> Generated locally and stored in encrypted/secure device storage to maintain peer recognition and favorites.</li>
+  <li><strong>Nickname &amp; favorites:</strong> Chosen locally; your nickname and ephemeral public keys are broadcast to peers you chat with.</li>
+  <li><strong>Message history:</strong> Kept ephemerally in memory or locally only when you enable retention. You can clear all app data directly in the app or by uninstalling.</li>
+</ul>
+
+<h2>Permissions Used</h2>
+<ul>
+  <li><strong>Bluetooth &amp; Nearby Devices:</strong> Used to discover nearby Murmur/Bitchat peers and relay mesh messages.</li>
+  <li><strong>Location (Phone only; foreground &amp; optional background):</strong> Required by Android for Bluetooth LE scanning on Android 11 and lower and to compute coarse geohash regions if you use Geohash Channels. Precise GPS coordinates are never transmitted to servers or peers; only coarse geohashes are used for regional Nostr channels. The Wear OS app declares no location or internet permissions.</li>
+  <li><strong>Microphone &amp; Camera (Optional):</strong> Used only when you explicitly record voice notes or scan a peer QR verification code.</li>
+  <li><strong>Notifications &amp; Foreground Service:</strong> Used to keep the local Bluetooth mesh and phone-watch tunnel active and notify you of incoming messages.</li>
+</ul>
+
+<h2>Children's Privacy</h2>
+<p>Murmur is intended for users aged 18 and over and does not knowingly collect personal information from children.</p>
+
+<h2>Open Source &amp; Contact</h2>
+<p>Source code: <a href="https://github.com/HamzaCoder53/murmur">https://github.com/HamzaCoder53/murmur</a></p>
+<p>Questions about this privacy policy: <a href="mailto:xfuturehb@gmail.com">xfuturehb@gmail.com</a></p>
+</body>
+</html>
