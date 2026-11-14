@@ -21,6 +21,8 @@ import java.util.Date
 object MirrorProtocol {
     private const val VERSION = 1
 
+    const val MAX_NICKNAME = 32
+
     /** Data Layer messages are limited to about 100 KB; stay well under it. */
     const val MAX_PAYLOAD_BYTES = 80_000
 
@@ -59,6 +61,11 @@ object MirrorProtocol {
             val peerID: String,
             val recipientNickname: String
         ) : Command
+
+        /** The shared nickname was changed on the watch; [content] is the new name. */
+        data class SetNickname(override val content: String) : Command {
+            override val messageID: String = ""
+        }
     }
 
     // --- Messages ---
@@ -200,6 +207,7 @@ object MirrorProtocol {
             is Command.SendPrivate -> {
                 put("op", "dm"); put("to", command.peerID); put("n", command.recipientNickname)
             }
+            is Command.SetNickname -> put("op", "nick")
         }
     }.toString().toByteArray(Charsets.UTF_8)
 
@@ -211,6 +219,7 @@ object MirrorProtocol {
             json.optInt("v", -1) != VERSION || content.isBlank() -> null
             json.optString("op") == "pub" -> Command.SendPublic(id, content)
             json.optString("op") == "dm" -> Command.SendPrivate(id, content, json.getString("to"), json.optString("n", ""))
+            json.optString("op") == "nick" -> Command.SetNickname(content.trim().take(MAX_NICKNAME))
             else -> null
         }
     } catch (_: Exception) {

@@ -120,6 +120,15 @@ class LinkedIdentityProtocolTest {
     }
 
     @Test
+    fun `a nickname change round trips and is capped`() {
+        val long = MirrorProtocol.Command.SetNickname("a".repeat(50))
+
+        val decoded = MirrorProtocol.decodeCommand(MirrorProtocol.encodeCommand(long))
+
+        assertEquals(MirrorProtocol.Command.SetNickname("a".repeat(MirrorProtocol.MAX_NICKNAME)), decoded)
+    }
+
+    @Test
     fun `an empty command is rejected`() {
         assertNull(MirrorProtocol.decodeCommand(MirrorProtocol.encodeCommand(MirrorProtocol.Command.SendPublic("id", " "))))
     }

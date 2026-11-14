@@ -11,3 +11,7 @@
 # Tink references JSR-305 annotations not present on Android.
 -dontwarn javax.annotation.Nullable
 -dontwarn javax.annotation.concurrent.GuardedBy
+
+# Internet private messages: Nostr events, filters and requests go through Gson by field name
+# (same keep rule the phone app uses).
+-keep class com.bitchat.android.nostr.** { *; }

@@ -20,8 +20,8 @@ android {
         targetSdk = libs.versions.targetSdk.get().toInt()
         // Wear releases use a separate high range because Play requires every artifact in
         // one application ID to have a unique version code across all form factors.
-        versionCode = 1_000_000_005
-        versionName = "0.2.0"
+        versionCode = 1_000_000_006
+        versionName = "0.3.0"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -109,6 +109,16 @@ val sharedSourceIncludes = listOf(
     "com/bitchat/android/service/TransportBridgeService.kt",
     "com/bitchat/android/spam/**",
     "com/bitchat/android/nostr/Bech32.kt",
+    // Internet private messages (same Nostr format as Bitchat on phones).
+    "com/bitchat/android/nostr/NostrCrypto.kt",
+    "com/bitchat/android/nostr/NostrEvent.kt",
+    "com/bitchat/android/nostr/NostrFilter.kt",
+    "com/bitchat/android/nostr/NostrRequest.kt",
+    "com/bitchat/android/nostr/NostrProtocol.kt",
+    "com/bitchat/android/nostr/NostrProofOfWork.kt",
+    "com/bitchat/android/nostr/PoWPreferenceManager.kt",
+    "com/bitchat/android/nostr/NostrEmbeddedBitChat.kt",
+    "com/bitchat/android/nostr/NostrIdentity.kt",
     "com/bitchat/android/nostr/GeohashAliasRegistry.kt",
     "com/bitchat/android/features/file/FileUtils.kt",
     "com/bitchat/android/features/voice/**",
@@ -224,8 +234,12 @@ dependencies {
     // Security preferences (Noise identity persistence)
     implementation(libs.androidx.security.crypto)
 
-    // Phone-watch tunnel (Wearable Data Layer). Needs no INTERNET permission.
+    // Phone-watch tunnel (Wearable Data Layer).
     implementation(libs.gms.wearable)
+
+    // Internet private messages: relay websockets and NIP-44 encryption.
+    implementation(libs.okhttp)
+    implementation(libs.google.tink.android)
 
     // Testing
     testImplementation(libs.bundles.testing)

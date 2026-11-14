@@ -261,6 +261,13 @@ class LinkedWatchCoordinator(
         val me = mesh.myPeerID
         val nickname = NicknameProvider.getNickname(appContext, me)
         when (command) {
+            is MirrorProtocol.Command.SetNickname -> {
+                if (command.content == nickname) return
+                com.bitchat.android.ui.DataManager(appContext).saveNickname(command.content)
+                AppStateStore.setNickname(command.content)
+                mesh.sendBroadcastAnnounce()
+                pushSnapshot(reachableLinkedNodes())
+            }
             is MirrorProtocol.Command.SendPublic -> {
                 if (AppStateStore.hasSeenMessage(command.messageID)) return
                 AppStateStore.addPublicMessage(

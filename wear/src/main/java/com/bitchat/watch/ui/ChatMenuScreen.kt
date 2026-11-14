@@ -8,6 +8,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -153,6 +155,11 @@ fun ChatMenuScreen(onQuit: () -> Unit) {
                 ) {
                     Text("Save history", maxLines = 1)
                 }
+            }
+            val internet = com.bitchat.watch.mesh.WearMeshService.peek()?.internet
+            if (internet != null) {
+                item { InternetModeButton(internet) }
+                item { InternetCheckButton(internet) }
             }
             if (linkClient != null) {
                 item {
@@ -316,5 +323,46 @@ private fun LinkPhoneButton(
         },
     ) {
         Text(if (linked) "Unlink phone" else "Link to phone", maxLines = 1)
+    }
+}
+
+@Composable
+private fun InternetModeButton(client: com.bitchat.watch.internet.WatchNostrClient) {
+    val palette = LocalBitchatPalette.current
+    val status by client.status.collectAsState()
+    val modes = com.bitchat.watch.internet.WatchNostrClient.Mode.entries
+    FilledTonalButton(
+        onClick = { client.setMode(modes[(modes.indexOf(status.mode) + 1) % modes.size]) },
+        modifier = Modifier.fillMaxWidth(),
+        icon = { Icon(imageVector = Icons.Filled.Public, contentDescription = null) },
+        secondaryLabel = { Text(text = status.mode.label, color = palette.textTertiary, maxLines = 1) },
+    ) {
+        Text("Internet DMs", maxLines = 1)
+    }
+}
+
+@Composable
+private fun InternetCheckButton(client: com.bitchat.watch.internet.WatchNostrClient) {
+    val palette = LocalBitchatPalette.current
+    val status by client.status.collectAsState()
+    val linkedNearby = com.bitchat.watch.mesh.WearMeshService.peek()?.isMirrored == true
+    val detail = when {
+        linkedNearby -> "Phone checks for you"
+        status.checking -> "Checking…"
+        status.lastError != null -> status.lastError!!
+        status.mode == com.bitchat.watch.internet.WatchNostrClient.Mode.ALWAYS && status.connectedRelays > 0 ->
+            "Live · ${status.connectedRelays} relays"
+        status.lastCheckMs != null -> "Checked " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+            .format(java.util.Date(status.lastCheckMs!!))
+        else -> "Not checked yet"
+    }
+    FilledTonalButton(
+        onClick = { client.checkNow() },
+        enabled = !linkedNearby && !status.checking,
+        modifier = Modifier.fillMaxWidth(),
+        icon = { Icon(imageVector = Icons.Filled.Refresh, contentDescription = null) },
+        secondaryLabel = { Text(text = detail, color = palette.textTertiary, maxLines = 1) },
+    ) {
+        Text("Check now", maxLines = 1)
     }
 }

@@ -35,6 +35,7 @@ import com.bitchat.watch.link.LinkMode
 import com.bitchat.watch.link.LinkModeController
 import com.bitchat.watch.link.LinkedPhoneClient
 import com.bitchat.watch.link.NoTransport
+import com.bitchat.watch.internet.WatchNostrClient
 import com.bitchat.watch.link.SwitchingTransport
 import com.bitchat.watch.rendezvous.AndroidRendezvousPlatform
 import com.bitchat.watch.rendezvous.MeshClock
@@ -105,6 +106,18 @@ class WearMeshService private constructor(private val context: Context) {
 
     /** True while linked and next to the phone: the phone is on the mesh, the watch mirrors it. */
     val isMirrored: Boolean get() = linkedClient.mirroring
+
+    /** Private messages over the internet (Nostr), when not mirroring a linked phone. */
+    val internet = WatchNostrClient(
+        context = context,
+        scope = serviceScope,
+        myPeerID = { myPeerID },
+        myNickname = { nickname },
+        onIncomingPrivate = { message -> handleMessageReceived(message) }
+    )
+
+    /** Message IDs already handed to the internet, so the outbox does not resend them there. */
+    private val sentOverInternet = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
     private val linkModeController = LinkModeController(
         scope = serviceScope,
         phoneReachable = linkChannel.reachableNodes.map { it.isNotEmpty() },
@@ -248,6 +261,7 @@ class WearMeshService private constructor(private val context: Context) {
         Handler(Looper.getMainLooper()).post {
             ProcessLifecycleOwner.get().lifecycle.addObserver(foregroundObserver)
         }
+        linkedClient.onNicknameFromPhone = { name -> applyNickname(name.trim().take(32)) }
     }
 
     private inner class BleTransport : MeshTransport {
@@ -419,6 +433,7 @@ class WearMeshService private constructor(private val context: Context) {
             linkedClient.start()
             if (linkedClient.linked) linkChannel.start() else phoneLink.start()
             linkModeController.start()
+            internet.start()
             outboxJob = serviceScope.launch {
                 while (true) {
                     delay(DmOutbox.FIRST_RETRY_MS)
@@ -437,6 +452,7 @@ class WearMeshService private constructor(private val context: Context) {
         synchronized(radioLock) {
             if (!isActive) return
             isActive = false
+            internet.stop()
             outboxJob?.cancel()
             outboxJob = null
             linkModeController.stop()
@@ -463,6 +479,8 @@ class WearMeshService private constructor(private val context: Context) {
             refreshClockTrust()
         }
         Log.i(TAG, "Link mode: $mode")
+        // A linked phone fetches internet messages for both while the watch is next to it.
+        internet.setSuspended(linkedClient.linked && mode == LinkMode.TETHERED)
         if (linkedClient.linked) {
             if (mode == LinkMode.TETHERED) {
                 // Same identity as the phone: stay silent, mirror it, and hand over unsent DMs.
@@ -523,6 +541,21 @@ class WearMeshService private constructor(private val context: Context) {
         }
     }
 
+    /** Whether [peerID] is currently reachable over Bluetooth (directly or through the mesh). */
+    fun isPeerReachable(peerID: String): Boolean = getPeerInfo(peerID)?.isConnected == true
+
+    /** Send over the internet right away (the recipient is out of Bluetooth reach). */
+    fun sendPrivateOverInternet(content: String, peerID: String, messageID: String) {
+        sentOverInternet += messageID
+        serviceScope.launch {
+            if (internet.sendPrivate(content, peerID, messageID)) {
+                AppStateStore.updatePrivateMessageStatus(messageID, com.bitchat.android.model.DeliveryStatus.Sent)
+            } else {
+                sentOverInternet -= messageID
+            }
+        }
+    }
+
     /** Hold a private text message until the recipient acknowledges it. */
     fun trackOutgoingPrivate(messageID: String, peerID: String, recipientNickname: String, content: String) {
         dmOutbox.track(messageID, peerID, recipientNickname, content)
@@ -530,6 +563,25 @@ class WearMeshService private constructor(private val context: Context) {
 
     private fun runOutboxPass(urgentPeers: Set<String> = emptySet()) {
         if (!isActive || dmOutbox.size == 0 || isMirrored) return
+        // Recipients out of Bluetooth reach get one try over the internet (mutual favorites only).
+        dmOutbox.pending().forEach { entry ->
+            if (entry.messageID !in sentOverInternet &&
+                !isPeerReachable(entry.peerID) &&
+                internet.canSend(entry.peerID)
+            ) {
+                sentOverInternet += entry.messageID
+                serviceScope.launch {
+                    if (internet.sendPrivate(entry.content, entry.peerID, entry.messageID)) {
+                        AppStateStore.updatePrivateMessageStatus(
+                            entry.messageID,
+                            com.bitchat.android.model.DeliveryStatus.Sent
+                        )
+                    } else {
+                        sentOverInternet -= entry.messageID
+                    }
+                }
+            }
+        }
         val actions = dmOutbox.due(
             statusOf = ::privateMessageStatus,
             isReachable = { peer -> getPeerInfo(peer)?.isConnected == true },
@@ -574,6 +626,14 @@ class WearMeshService private constructor(private val context: Context) {
     fun setNickname(name: String) {
         val trimmed = name.trim().take(32)
         if (trimmed.isEmpty() || trimmed == nickname) return
+        applyNickname(trimmed)
+        // Linked: the phone shares this name, so it changes there too.
+        linkedClient.onLocalNicknameChanged(trimmed)
+    }
+
+    /** Change the nickname without telling the phone (used when the phone changed it). */
+    private fun applyNickname(trimmed: String) {
+        if (trimmed == nickname) return
         nickname = trimmed
         saveNickname(trimmed)
         if (isActive) {
@@ -608,7 +668,13 @@ class WearMeshService private constructor(private val context: Context) {
             }
             val recipientNickname = getPeerNickname(peerID) ?: peerID.take(8)
             meshCore.sendPrivateMessage(
-                content = FavoriteControlMessage.encode(isFavorite, npub = null),
+                // Include this identity's internet key, so a mutual favorite can reach us online.
+                content = FavoriteControlMessage.encode(
+                    isFavorite,
+                    npub = runCatching {
+                        com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(context)?.npub
+                    }.getOrNull()
+                ),
                 recipientPeerID = peerID,
                 recipientNickname = recipientNickname
             )

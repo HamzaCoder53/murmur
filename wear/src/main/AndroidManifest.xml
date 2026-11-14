@@ -7,8 +7,11 @@
         android:name="android.hardware.bluetooth_le"
         android:required="true" />
 
-    <!-- Bluetooth mesh, plus a tunnel to the paired phone over the Wearable Data Layer.
-         Deliberately NO android.permission.INTERNET and no location. -->
+    <!-- Bluetooth mesh, a tunnel to the paired phone over the Wearable Data Layer, and private
+         messages over the internet (Nostr relays) when away from the phone. No location. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission
         android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation"
@@ -44,6 +47,10 @@
 
         <receiver
             android:name=".rendezvous.RendezvousAlarmReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".internet.InternetCheckReceiver"
             android:exported="false" />
 
         <activity

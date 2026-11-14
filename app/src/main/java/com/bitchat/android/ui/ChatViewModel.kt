@@ -456,6 +456,12 @@ class ChatViewModel(
             } } catch (_: Exception) { }
         }
         viewModelScope.launch {
+            // Murmur: a linked watch can rename the shared identity while this screen is open.
+            com.bitchat.android.services.AppStateStore.nickname.collect { name ->
+                if (name.isNotBlank() && name != state.getNicknameValue()) state.setNickname(name)
+            }
+        }
+        viewModelScope.launch {
             try { com.bitchat.android.services.AppStateStore.publicMessages.collect { msgs ->
                 // Source of truth is AppStateStore; replace to avoid duplicate keys in LazyColumn
                 state.setMessages(msgs)

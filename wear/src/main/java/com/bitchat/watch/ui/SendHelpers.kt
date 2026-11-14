@@ -64,6 +64,26 @@ internal fun sendPrivateMessage(
         )
         return
     }
+    if (!mesh.isPeerReachable(peerID) && mesh.internet.canSend(peerID)) {
+        // Out of Bluetooth reach but a mutual favorite: send over the internet.
+        AppStateStore.addPrivateMessage(
+            peerID,
+            BitchatMessage(
+                id = messageID,
+                sender = mesh.nickname,
+                content = content,
+                timestamp = Date(),
+                isPrivate = true,
+                recipientNickname = recipientNickname,
+                senderPeerID = mesh.myPeerID,
+                deliveryStatus = DeliveryStatus.Sending
+            ),
+            forceRead = true
+        )
+        mesh.sendPrivateOverInternet(content, peerID, messageID)
+        mesh.trackOutgoingPrivate(messageID, peerID, recipientNickname, content)
+        return
+    }
     val established = mesh.hasEstablishedSession(peerID)
     if (established) {
         mesh.sendPrivateMessageWithId(content, peerID, recipientNickname, messageID)

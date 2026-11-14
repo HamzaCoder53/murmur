@@ -38,6 +38,7 @@ class LinkedPhoneClient(
         private const val PREFS = "murmur_link"
         private const val KEY_LINKED = "linked"
         private const val KEY_STANDALONE_SINCE = "standalone_since_ms"
+        private const val KEY_PENDING_NICKNAME = "pending_nickname"
         private const val WATCH_PREFS = "bitchat_watch_prefs"
         private const val KEY_NICKNAME = "nickname"
         private const val MIRROR_TRANSPORT = "MIRROR"
@@ -64,6 +65,22 @@ class LinkedPhoneClient(
     @Volatile
     var phoneNickname: String? = null
         private set
+
+    /** Called when the phone renamed the shared identity; the watch adopts the name. */
+    @Volatile
+    var onNicknameFromPhone: ((String) -> Unit)? = null
+
+    /** The watch renamed the shared identity: tell the phone now, or when it is next reachable. */
+    fun onLocalNicknameChanged(name: String) {
+        if (!linked) return
+        prefs.edit().putString(KEY_PENDING_NICKNAME, name).apply()
+        sendPendingNickname()
+    }
+
+    private fun sendPendingNickname() {
+        val pending = prefs.getString(KEY_PENDING_NICKNAME, null) ?: return
+        sendCommand(MirrorProtocol.Command.SetNickname(pending))
+    }
 
     /** messageID -> status signature last applied, so unchanged messages are not rewritten. */
     private val applied = HashMap<String, String>()
@@ -178,6 +195,7 @@ class LinkedPhoneClient(
         val backlog = if (since > 0) buildBacklog(since) else MirrorProtocol.encodeBacklog(emptyList(), emptyList())
         channel.sendControl(node, WearLinkContract.CTL_MIRROR_HELLO, backlog)
         prefs.edit().putLong(KEY_STANDALONE_SINCE, 0L).apply()
+        sendPendingNickname()
     }
 
     /** Away from the phone: the watch runs the mesh itself from now on. */
@@ -210,6 +228,15 @@ class LinkedPhoneClient(
     private fun applySnapshot(snapshot: MirrorProtocol.Snapshot) {
         if (snapshot.myPeerID != myPeerID()) return
         phoneNickname = snapshot.myNickname
+        val pending = prefs.getString(KEY_PENDING_NICKNAME, null)
+        when {
+            // The phone took the watch's new name.
+            pending != null && pending == snapshot.myNickname ->
+                prefs.edit().remove(KEY_PENDING_NICKNAME).apply()
+            // The phone has not seen the watch's change yet; keep the watch's name.
+            pending != null -> sendPendingNickname()
+            snapshot.myNickname.isNotBlank() -> onNicknameFromPhone?.invoke(snapshot.myNickname)
+        }
         mirrorPeers = snapshot.peers.associateBy { it.peerID }
         AppStateStore.setTransportPeers(MIRROR_TRANSPORT, snapshot.peers.map { it.peerID })
         synchronized(applied) {
