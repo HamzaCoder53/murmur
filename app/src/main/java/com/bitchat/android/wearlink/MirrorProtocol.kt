@@ -30,7 +30,11 @@ object MirrorProtocol {
         val peerID: String,
         val nickname: String,
         val connected: Boolean,
-        val hasSession: Boolean
+        val hasSession: Boolean,
+        /** Noise static key (hex), needed to favorite or verify the peer. */
+        val noiseKeyHex: String? = null,
+        val isFavorite: Boolean = false,
+        val theyFavoritedUs: Boolean = false
     )
 
     data class Conversation(
@@ -61,6 +65,11 @@ object MirrorProtocol {
             val peerID: String,
             val recipientNickname: String
         ) : Command
+
+        /** Favorite or unfavorite a peer; [content] is the peer ID. */
+        data class SetFavorite(override val content: String, val isFavorite: Boolean) : Command {
+            override val messageID: String = ""
+        }
 
         /** The shared nickname was changed on the watch; [content] is the new name. */
         data class SetNickname(override val content: String) : Command {
@@ -154,6 +163,8 @@ object MirrorProtocol {
                 put(JSONObject().apply {
                     put("id", p.peerID); put("n", p.nickname)
                     put("c", p.connected); put("s", p.hasSession)
+                    p.noiseKeyHex?.let { put("k", it) }
+                    put("f", p.isFavorite); put("fb", p.theyFavoritedUs)
                 })
             }
         })
@@ -175,7 +186,10 @@ object MirrorProtocol {
             val peers = json.getJSONArray("peers").let { a ->
                 (0 until a.length()).map { i ->
                     val p = a.getJSONObject(i)
-                    Peer(p.getString("id"), p.getString("n"), p.optBoolean("c"), p.optBoolean("s"))
+                    Peer(
+                        p.getString("id"), p.getString("n"), p.optBoolean("c"), p.optBoolean("s"),
+                        p.optString("k", "").ifEmpty { null }, p.optBoolean("f"), p.optBoolean("fb")
+                    )
                 }
             }
             val conversations = json.getJSONArray("dm").let { a ->
@@ -208,6 +222,7 @@ object MirrorProtocol {
                 put("op", "dm"); put("to", command.peerID); put("n", command.recipientNickname)
             }
             is Command.SetNickname -> put("op", "nick")
+            is Command.SetFavorite -> { put("op", "fav"); put("f", command.isFavorite) }
         }
     }.toString().toByteArray(Charsets.UTF_8)
 
@@ -220,6 +235,7 @@ object MirrorProtocol {
             json.optString("op") == "pub" -> Command.SendPublic(id, content)
             json.optString("op") == "dm" -> Command.SendPrivate(id, content, json.getString("to"), json.optString("n", ""))
             json.optString("op") == "nick" -> Command.SetNickname(content.trim().take(MAX_NICKNAME))
+            json.optString("op") == "fav" -> Command.SetFavorite(content, json.optBoolean("f"))
             else -> null
         }
     } catch (_: Exception) {

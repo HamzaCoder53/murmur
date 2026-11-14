@@ -37,8 +37,8 @@ android {
         applicationId = "xfuturehb.murmur"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 7
-        versionName = "0.3.0"
+        versionCode = 8
+        versionName = "0.3.1"
         buildConfigField(
             "String",
             "GITHUB_RELEASE_CERT_SHA256",

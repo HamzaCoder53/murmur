@@ -238,6 +238,7 @@ class LinkedPhoneClient(
             snapshot.myNickname.isNotBlank() -> onNicknameFromPhone?.invoke(snapshot.myNickname)
         }
         mirrorPeers = snapshot.peers.associateBy { it.peerID }
+        syncFavorites(snapshot.peers)
         AppStateStore.setTransportPeers(MIRROR_TRANSPORT, snapshot.peers.map { it.peerID })
         synchronized(applied) {
             snapshot.publicMessages.forEach { message ->
@@ -269,6 +270,30 @@ class LinkedPhoneClient(
     fun peerNicknames(): Map<String, String> = mirrorPeers.mapValues { it.value.nickname }
 
     fun hasSession(peerID: String): Boolean = mirrorPeers[peerID]?.hasSession == true
+
+    /** The peer's Noise key as the phone knows it (the watch is not on the mesh to learn it). */
+    fun noiseKey(peerID: String): ByteArray? = mirrorPeers[peerID]?.noiseKeyHex?.let { hex ->
+        runCatching { hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray() }.getOrNull()
+    }
+
+    /** Ask the phone to favorite or unfavorite a peer. */
+    fun setFavorite(peerID: String, isFavorite: Boolean): Boolean =
+        sendCommand(MirrorProtocol.Command.SetFavorite(peerID, isFavorite))
+
+    /** Keep the watch's copy of favorites in step with the phone's. */
+    private fun syncFavorites(peers: List<MirrorProtocol.Peer>) {
+        val favorites = runCatching { com.bitchat.android.favorites.FavoritesPersistenceService.shared }.getOrNull() ?: return
+        peers.forEach { peer ->
+            val key = noiseKey(peer.peerID) ?: return@forEach
+            val local = favorites.getFavoriteStatus(key)
+            if ((local?.isFavorite == true) != peer.isFavorite) {
+                favorites.updateFavoriteStatus(key, peer.nickname, peer.isFavorite)
+            }
+            if ((local?.theyFavoritedUs == true) != peer.theyFavoritedUs) {
+                favorites.updatePeerFavoritedUs(key, peer.theyFavoritedUs)
+            }
+        }
+    }
 
     /** Ask the phone to send [content] as a public message. */
     fun sendPublic(messageID: String, content: String): Boolean = sendCommand(

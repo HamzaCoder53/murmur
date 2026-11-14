@@ -88,6 +88,17 @@ object WearPeerIdentityState : FavoritesChangeListener {
         mesh: WearMeshService
     ): Boolean {
         check(initialized) { "WearPeerIdentityState must be initialized by the application" }
+        if (mesh.isMirrored) {
+            // Linked and next to the phone: the phone favorites (it is the one on the mesh).
+            val key = mesh.linkedClient.noiseKey(peerID) ?: return false
+            if (!mesh.linkedClient.setFavorite(peerID, isFavorite)) return false
+            FavoritesPersistenceService.shared.updateFavoriteStatus(
+                noisePublicKey = key,
+                nickname = mesh.getPeerNickname(peerID) ?: peerID.take(8),
+                isFavorite = isFavorite
+            )
+            return true
+        }
         val peerInfo = mesh.getPeerInfo(peerID) ?: return false
         val noisePublicKey = peerInfo.noisePublicKey ?: return false
         val nickname = mesh.getPeerNickname(peerID)
@@ -130,7 +141,9 @@ object WearPeerIdentityState : FavoritesChangeListener {
         mesh: WearMeshService?
     ): FavoriteRelationship? {
         FavoritesPersistenceService.shared.getFavoriteStatus(peerID)?.let { return it }
-        val noisePublicKey = mesh?.getPeerInfo(peerID)?.noisePublicKey ?: return null
+        val noisePublicKey = mesh?.getPeerInfo(peerID)?.noisePublicKey
+            ?: mesh?.linkedClient?.noiseKey(peerID)
+            ?: return null
         return FavoritesPersistenceService.shared.getFavoriteStatus(noisePublicKey)
     }
 

@@ -76,7 +76,13 @@ class LinkedIdentityProtocolTest {
         val snapshot = MirrorProtocol.Snapshot(
             myPeerID = "aaaaaaaaaaaaaaaa",
             myNickname = "hamza",
-            peers = listOf(MirrorProtocol.Peer("1122334455667788", "alice", connected = true, hasSession = true)),
+            peers = listOf(
+                MirrorProtocol.Peer(
+                    "1122334455667788", "alice", connected = true, hasSession = true,
+                    noiseKeyHex = "ab".repeat(32), isFavorite = true, theyFavoritedUs = false
+                ),
+                MirrorProtocol.Peer("8877665544332211", "bob", connected = false, hasSession = false)
+            ),
             publicMessages = listOf(msg("p1").copy(isPrivate = false)),
             conversations = listOf(
                 MirrorProtocol.Conversation("conv", "1122334455667788", listOf(msg("d1", delivered), msg("d2", DeliveryStatus.Failed("x"))))
@@ -126,6 +132,15 @@ class LinkedIdentityProtocolTest {
         val decoded = MirrorProtocol.decodeCommand(MirrorProtocol.encodeCommand(long))
 
         assertEquals(MirrorProtocol.Command.SetNickname("a".repeat(MirrorProtocol.MAX_NICKNAME)), decoded)
+    }
+
+    @Test
+    fun `a favorite change round trips`() {
+        val fav = MirrorProtocol.Command.SetFavorite("1122334455667788", isFavorite = true)
+        val unfav = MirrorProtocol.Command.SetFavorite("1122334455667788", isFavorite = false)
+
+        assertEquals(fav, MirrorProtocol.decodeCommand(MirrorProtocol.encodeCommand(fav)))
+        assertEquals(unfav, MirrorProtocol.decodeCommand(MirrorProtocol.encodeCommand(unfav)))
     }
 
     @Test

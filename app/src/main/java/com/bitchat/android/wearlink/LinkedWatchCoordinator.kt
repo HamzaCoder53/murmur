@@ -230,11 +230,19 @@ class LinkedWatchCoordinator(
         val me = mesh.myPeerID
         val nicknames = mesh.getPeerNicknames()
         val peers = AppStateStore.peers.value.filter { it != me }.map { id ->
+            val info = mesh.getPeerInfo(id)
+            val noiseKey = info?.noisePublicKey
+            val relationship = noiseKey?.let {
+                runCatching { com.bitchat.android.favorites.FavoritesPersistenceService.shared.getFavoriteStatus(it) }.getOrNull()
+            }
             MirrorProtocol.Peer(
                 peerID = id,
                 nickname = nicknames[id] ?: id.take(8),
-                connected = mesh.getPeerInfo(id)?.isConnected == true,
-                hasSession = mesh.hasEstablishedSession(id)
+                connected = info?.isConnected == true,
+                hasSession = mesh.hasEstablishedSession(id),
+                noiseKeyHex = noiseKey?.joinToString("") { "%02x".format(it) },
+                isFavorite = relationship?.isFavorite == true,
+                theyFavoritedUs = relationship?.theyFavoritedUs == true
             )
         }
         val conversations = AppStateStore.privateMessages.value.entries
@@ -261,6 +269,10 @@ class LinkedWatchCoordinator(
         val me = mesh.myPeerID
         val nickname = NicknameProvider.getNickname(appContext, me)
         when (command) {
+            is MirrorProtocol.Command.SetFavorite -> {
+                setFavorite(mesh, command.content, command.isFavorite)
+                pushSnapshot(reachableLinkedNodes())
+            }
             is MirrorProtocol.Command.SetNickname -> {
                 if (command.content == nickname) return
                 com.bitchat.android.ui.DataManager(appContext).saveNickname(command.content)
@@ -309,6 +321,27 @@ class LinkedWatchCoordinator(
                     AppStateStore.updatePrivateMessageStatus(command.messageID, DeliveryStatus.Sent)
                 }
             }
+        }
+    }
+
+    /** Favorite exactly as the phone's own Favorite button does (list, relationship, notice). */
+    private fun setFavorite(mesh: com.bitchat.android.mesh.MeshService, peerID: String, isFavorite: Boolean) {
+        val info = mesh.getPeerInfo(peerID)
+        val contact = ContactDirectory.resolve(peerID)
+        val noiseKey = info?.noisePublicKey ?: contact.noisePublicKey ?: run {
+            Log.w(TAG, "Cannot favorite from the watch: no key for this peer")
+            return
+        }
+        val nickname = info?.nickname?.takeIf { it.isNotBlank() }
+            ?: contact.displayName ?: mesh.getPeerNicknames()[peerID] ?: peerID.take(8)
+        val fingerprint = com.bitchat.android.identity.SecureIdentityStateManager(appContext).generateFingerprint(noiseKey)
+        val dataManager = com.bitchat.android.ui.DataManager(appContext)
+        if (isFavorite) dataManager.addFavorite(fingerprint) else dataManager.removeFavorite(fingerprint)
+        com.bitchat.android.favorites.FavoritesPersistenceService.shared.updateFavoriteStatus(noiseKey, nickname, isFavorite)
+        try {
+            MessageRouter.getInstance(appContext, mesh).sendFavoriteNotification(peerID, isFavorite)
+        } catch (e: Exception) {
+            Log.w(TAG, "Favorite notice not sent: ${e.message}")
         }
     }
 
