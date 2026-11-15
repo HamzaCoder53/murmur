@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modern Standard Arabic (الفصحى). Brand names stay in Latin script. -->
+<resources>
+    <string name="app_name">Skein</string>
+    <string name="mesh_channel_name">الشبكة المحلية</string>
+    <string name="mesh_channel_description">يُبقي شبكة البلوتوث تعمل في الخلفية</string>
+    <string name="mesh_notification_no_peers">الشبكة تعمل</string>
+    <plurals name="mesh_notification_text">
+        <item quantity="zero">لا أجهزة قريبة</item>
+        <item quantity="one">جهاز واحد</item>
+        <item quantity="two">جهازان</item>
+        <item quantity="few">%1$d أجهزة</item>
+        <item quantity="many">%1$d جهازًا</item>
+        <item quantity="other">%1$d جهاز</item>
+    </plurals>
+    <string name="message_channel_name">الرسائل الخاصة</string>
+    <string name="message_channel_description">تنبيهات الرسائل الخاصة المشفّرة</string>
+    <string name="notification_new_private_message">رسالة مشفّرة جديدة</string>
+    <string name="notification_private_message_hidden">افتح القفل لعرض الرسالة</string>
+    <plurals name="notification_private_message_summary">
+        <item quantity="zero">لا رسائل جديدة</item>
+        <item quantity="one">رسالة جديدة واحدة</item>
+        <item quantity="two">رسالتان جديدتان</item>
+        <item quantity="few">%1$d رسائل جديدة</item>
+        <item quantity="many">%1$d رسالة جديدة</item>
+        <item quantity="other">%1$d رسالة جديدة</item>
+    </plurals>
+
+    <!-- القائمة -->
+    <string name="menu_live_talk">التحدث المباشر</string>
+    <string name="menu_live_talk_detail">في الوقت الفعلي</string>
+    <string name="menu_save_history">حفظ السجل</string>
+    <string name="menu_save_history_detail">المحادثات الخاصة</string>
+    <string name="menu_location_chat">دردشة المنطقة</string>
+    <string name="menu_location_chat_detail">تحدّث مع من حولك</string>
+    <string name="menu_help">كيف يعمل</string>
+    <string name="menu_help_detail">دليل</string>
+    <string name="menu_quit">إنهاء</string>
+    <string name="menu_quit_detail">يوقف الشبكة</string>
+    <string name="mesh_status_scanning">الشبكة تعمل · جارٍ البحث</string>
+    <plurals name="mesh_status_peers">
+        <item quantity="zero">الشبكة تعمل · لا أجهزة</item>
+        <item quantity="one">الشبكة تعمل · جهاز واحد</item>
+        <item quantity="two">الشبكة تعمل · جهازان</item>
+        <item quantity="few">الشبكة تعمل · %d أجهزة</item>
+        <item quantity="many">الشبكة تعمل · %d جهازًا</item>
+        <item quantity="other">الشبكة تعمل · %d جهاز</item>
+    </plurals>
+    <string name="dialog_link_title">الربط بالهاتف؟</string>
+    <string name="dialog_link_text">تستخدم الساعة هوية هاتفك فتصل الرسائل إلى الجهازين. ستُمحى هوية هذه الساعة ومحادثاتها المحفوظة.</string>
+    <string name="dialog_unlink_title">إلغاء الربط بالهاتف؟</string>
+    <string name="dialog_unlink_text">ستحصل هذه الساعة على هوية خاصة بها، وستُمحى محادثاتها المحفوظة.</string>
+    <string name="dialog_erase_title">محو المحادثات المحفوظة؟</string>
+    <string name="dialog_erase_text">يتوقف الحفظ وتُمحى المحادثات الخاصة المحفوظة على هذه الساعة.</string>
+    <string name="dialog_quit_title">إنهاء Skein؟</string>
+    <string name="link_button_link">الربط بالهاتف</string>
+    <string name="link_button_unlink">إلغاء الربط</string>
+    <string name="link_state_not_linked">استخدام هوية الهاتف</string>
+    <string name="link_state_no_phone">افتح Skein على الهاتف</string>
+    <string name="link_state_requesting">أكّد على الهاتف</string>
+    <string name="link_state_denied">رُفض على الهاتف</string>
+    <string name="link_state_linked">نفس هوية الهاتف</string>
+    <string name="link_state_restarting">جارٍ إعادة تشغيل Skein</string>
+    <string name="internet_dms">رسائل عبر الإنترنت</string>
+    <string name="internet_mode_off">متوقفة</string>
+    <string name="internet_mode_5">كل 5 دقائق</string>
+    <string name="internet_mode_1">كل دقيقة</string>
+    <string name="internet_mode_always">دائمًا</string>
+    <string name="internet_check_now">تحقّق الآن</string>
+    <string name="internet_phone_checks">الهاتف يتحقق نيابةً عنك</string>
+    <string name="internet_checking">جارٍ التحقق…</string>
+    <plurals name="internet_live_relays">
+        <item quantity="zero">مباشر · لا خوادم</item>
+        <item quantity="one">مباشر · خادم واحد</item>
+        <item quantity="two">مباشر · خادمان</item>
+        <item quantity="few">مباشر · %d خوادم</item>
+        <item quantity="many">مباشر · %d خادمًا</item>
+        <item quantity="other">مباشر · %d خادم</item>
+    </plurals>
+    <string name="internet_checked_at">آخر تحقق %1$s</string>
+    <string name="internet_not_checked">لم يُتحقق بعد</string>
+    <string name="internet_error_identity">لا توجد هوية للإنترنت</string>
+    <string name="internet_error_connection">لا يوجد اتصال بالإنترنت</string>
+    <string name="internet_error_relays">تعذّر الوصول إلى الخوادم</string>
+
+    <!-- الإعداد والأذونات -->
+    <string name="nickname_title">الاسم المستعار</string>
+    <string name="nickname_subtitle">يراه من حولك</string>
+    <string name="nickname_pick">اختر اسمًا مستعارًا</string>
+    <string name="action_save">حفظ</string>
+    <string name="action_join">انضمام</string>
+    <string name="action_allow">سماح</string>
+    <string name="action_turn_on">تشغيل</string>
+    <string name="dm_alerts_title">تنبيهات الرسائل</string>
+    <string name="dm_alerts_text">اعرف عندما يراسلك أحد</string>
+    <string name="welcome_body">دردشة شبكية عبر البلوتوث</string>
+    <string name="bluetooth_off_title">البلوتوث متوقف</string>
+    <string name="bluetooth_off_body">مطلوب للاتصال بالشبكة</string>
+
+    <!-- الدردشة -->
+    <string name="chat_empty">لا رسائل بعد\nألقِ التحية على من حولك</string>
+    <string name="chat_open_people">عرض الأشخاص</string>
+    <string name="sender_you">أنت</string>
+    <plurals name="unread_messages">
+        <item quantity="zero">لا رسائل غير مقروءة</item>
+        <item quantity="one">رسالة واحدة غير مقروءة</item>
+        <item quantity="two">رسالتان غير مقروءتين</item>
+        <item quantity="few">%d رسائل غير مقروءة</item>
+        <item quantity="many">%d رسالة غير مقروءة</item>
+        <item quantity="other">%d رسالة غير مقروءة</item>
+    </plurals>
+    <string name="action_type_message">اكتب رسالة</string>
+    <string name="action_hold_to_talk">اضغط مطولًا للتحدث</string>
+    <string name="action_cancel_recording">إلغاء التسجيل</string>
+    <string name="voice_live">مباشر</string>
+    <string name="voice_lift_to_cancel">ارفع إصبعك للإلغاء</string>
+    <string name="voice_lift_to_send">ارفع إصبعك للإرسال</string>
+    <string name="voice_slide_to_cancel">اسحب للأعلى للإلغاء</string>
+    <string name="input_to">إلى %1$s</string>
+    <string name="input_to_mesh">إلى ‎#mesh</string>
+    <string name="input_hint">رسالة</string>
+    <string name="cd_dictate">إملاء صوتي</string>
+    <string name="cd_send">إرسال</string>
+    <string name="cd_image">صورة</string>
+    <string name="cd_close">إغلاق</string>
+    <string name="cd_play">تشغيل</string>
+    <string name="cd_pause">إيقاف مؤقت</string>
+    <string name="cd_favorite">مفضّل</string>
+    <string name="cd_verified">موثّق</string>
+    <string name="lock_handshaking">جارٍ تأمين الاتصال</string>
+    <string name="lock_encrypted">مشفّر</string>
+    <string name="lock_idle">غير مشفّر بعد</string>
+    <string name="dm_empty_encrypted">مشفّرة\nألقِ التحية</string>
+    <string name="dm_securing">جارٍ التأمين…</string>
+    <string name="dm_open_details">عرض تفاصيل المستخدم</string>
+
+    <!-- الأشخاص والهوية -->
+    <string name="people_title">الأشخاص</string>
+    <string name="people_empty">لا أحد بالقرب بعد\nجارٍ البحث…</string>
+    <string name="people_you_rename">أنت · تغيير الاسم</string>
+    <string name="people_me">أنا</string>
+    <string name="debug_peers">الأجهزة (%1$d)</string>
+    <string name="debug_scanning">جارٍ البحث عن الأجهزة القريبة…</string>
+    <string name="user_favorite">إضافة إلى المفضلة</string>
+    <string name="user_favorited">في المفضلة</string>
+    <string name="user_compare_codes">مقارنة الرموز</string>
+    <string name="user_verify">توثيق</string>
+    <string name="user_verified">موثّق</string>
+    <string name="user_mutual">متبادل</string>
+    <string name="user_favors_you">أضافك إلى مفضلته</string>
+    <string name="verify_unverify">إلغاء التوثيق</string>
+    <string name="verify_unverified">غير موثّق</string>
+    <string name="verify_match_in_person">طابِق الرموز وجهًا لوجه</string>
+    <string name="verify_theirs">رمزه</string>
+    <string name="verify_yours">رمزك</string>
+    <string name="verify_pending">قيد الانتظار…</string>
+
+    <!-- حالة الاتصال -->
+    <string name="diag_link">الاتصال</string>
+    <string name="diag_phone">الهاتف</string>
+    <string name="diag_own_radio">راديو الساعة</string>
+    <string name="diag_scan">البحث</string>
+    <string name="diag_scan_off">متوقف، الهاتف يمرّر</string>
+    <string name="diag_next_scan">البحث التالي</string>
+    <string name="diag_timing">التوقيت</string>
+    <string name="diag_precise">دقيق</string>
+    <string name="diag_approximate">تقريبي</string>
+    <string name="diag_last_scan">آخر بحث</string>
+    <string name="diag_peer_seen">عُثر على جهاز</string>
+    <string name="diag_no_one">لا أحد</string>
+    <string name="diag_scans_done">عمليات البحث</string>
+    <string name="diag_clock_offset">فرق الساعة</string>
+    <string name="diag_bluetooth_off">البلوتوث متوقف</string>
+    <string name="diag_active_app_open">نشط، التطبيق مفتوح</string>
+    <string name="diag_scanning_now">جارٍ البحث الآن</string>
+    <string name="diag_searching">يبحث عن آخرين</string>
+    <string name="diag_synced">متزامن</string>
+    <string name="diag_allow_precise">السماح بالتوقيت الدقيق</string>
+    <string name="diag_precise_unavailable">التوقيت الدقيق غير متاح على هذه الساعة</string>
+
+    <!-- البطاقة والإضافة -->
+    <string name="glance_off">متوقف</string>
+    <string name="glance_no_new">لا رسائل جديدة</string>
+    <plurals name="glance_new_messages">
+        <item quantity="zero">لا رسائل جديدة</item>
+        <item quantity="one">رسالة جديدة واحدة</item>
+        <item quantity="two">رسالتان جديدتان</item>
+        <item quantity="few">%d رسائل جديدة</item>
+        <item quantity="many">%d رسالة جديدة</item>
+        <item quantity="other">%d رسالة جديدة</item>
+    </plurals>
+    <plurals name="glance_new_messages_word">
+        <item quantity="zero">رسائل جديدة</item>
+        <item quantity="one">رسالة جديدة</item>
+        <item quantity="two">رسالتان جديدتان</item>
+        <item quantity="few">رسائل جديدة</item>
+        <item quantity="many">رسالة جديدة</item>
+        <item quantity="other">رسالة جديدة</item>
+    </plurals>
+    <string name="glance_nearby">%1$d بالقرب · %2$s</string>
+    <string name="complication_name">رسائل Skein</string>
+
+    <!-- دردشة المنطقة -->
+    <string name="loc_title">قنوات المنطقة</string>
+    <string name="loc_intro">دردشة عامة مع من في منطقتك. تُشارَك المنطقة التقريبية فقط، لا موقعك الدقيق أبدًا.</string>
+    <string name="loc_allow">السماح بالموقع</string>
+    <string name="loc_finding">جارٍ تحديد منطقتك…</string>
+    <string name="loc_unavailable">الموقع غير متاح</string>
+    <string name="loc_try_again">إعادة المحاولة</string>
+    <string name="loc_live">‎#%1$s · مباشر</string>
+    <string name="loc_connecting">‎#%1$s · جارٍ الاتصال…</string>
+    <string name="loc_empty">لا رسائل خلال الساعة الأخيرة</string>
+    <string name="loc_not_sent">لم تُرسل</string>
+    <string name="loc_write">اكتب</string>
+    <string name="area_block">المربّع السكني</string>
+    <string name="area_neighborhood">الحي</string>
+    <string name="area_city">المدينة</string>
+    <string name="area_province">المحافظة</string>
+    <string name="area_region">الإقليم</string>
+    <string name="area_generic">المنطقة</string>
+
+    <!-- كيف يعمل -->
+    <string name="help_title">كيف يعمل</string>
+    <string name="help_nearby_title">الدردشة القريبة</string>
+    <string name="help_nearby_body">بلا حساب ولا رقم هاتف. تنتقل الرسائل بين الهواتف والساعات عبر البلوتوث، مرورًا بما يصل إلى 7 أجهزة. يعمل مع مستخدمي Bitchat أيضًا.</string>
+    <string name="help_public_title">عام وخاص</string>
+    <string name="help_public_body">الدردشة الرئيسية عامة لكل من بالقرب. اضغط على اسم لمراسلته بشكل خاص، والمحادثات الخاصة مشفّرة من طرف إلى طرف.</string>
+    <string name="help_phone_title">مع هاتفك</string>
+    <string name="help_phone_body">عندما يكون Skein مفتوحًا على هاتفك، توقف الساعة الراديو الخاص بها وترسل عبر الهاتف. يظهر في الأشخاص ← الاتصال: الهاتف.</string>
+    <string name="help_link_title">الربط بالهاتف</string>
+    <string name="help_link_body">القائمة ← الربط بالهاتف يمنح الساعة هوية هاتفك: صندوق وارد واحد، واسم واحد، ومزامنة الصور وحالة القراءة. أكّد على الهاتف.</string>
+    <string name="help_alone_title">بمفردها</string>
+    <string name="help_alone_body">بعيدًا عن الهاتف تستخدم الساعة البلوتوث الخاص بها، وتبحث لفترة قصيرة كل دقيقة توفيرًا للبطارية. يظهر: راديو الساعة.</string>
+    <string name="help_favorites_title">المفضلة</string>
+    <string name="help_favorites_body">في المحادثة اضغط على الاسم في الأعلى ثم «إضافة إلى المفضلة». عندما يضيف كلٌّ منكما الآخر (متبادل) يمكنكما المراسلة عبر الإنترنت عن بُعد.</string>
+    <string name="help_internet_title">الرسائل عبر الإنترنت</string>
+    <string name="help_internet_body">للمفضلين المتبادلين خارج نطاق البلوتوث، تنتقل الرسائل عبر الإنترنت من خلال خوادم Nostr العامة. وهي مشفّرة فلا تستطيع الخوادم قراءتها.</string>
+    <string name="help_frequency_title">عدد مرات التحقق</string>
+    <string name="help_frequency_body">القائمة ← رسائل عبر الإنترنت: متوقفة، أو كل 5 دقائق، أو كل دقيقة، أو دائمًا. «دائمًا» أسرع لكنه يستهلك البطارية أكثر. «تحقّق الآن» يجلب فورًا.</string>
+    <string name="help_location_title">دردشة المنطقة</string>
+    <string name="help_location_body">القائمة ← دردشة المنطقة: دردشة عامة مع من في حيّك أو مدينتك عبر الإنترنت. تُشارَك المنطقة التقريبية فقط.</string>
+    <string name="help_tile_title">البطاقة</string>
+    <string name="help_tile_body">اسحب يسارًا على واجهة الساعة، واضغط +، واختر Skein: الرسائل الجديدة ومن بالقرب ونوع الاتصال بنظرة واحدة.</string>
+    <string name="help_complication_title">إضافة الواجهة</string>
+    <string name="help_complication_body">اضغط مطولًا على واجهة الساعة ← تعديل ← الإضافات ← رسائل Skein لعرض عدد الرسائل غير المقروءة.</string>
+    <string name="help_privacy_title">الخصوصية</string>
+    <string name="help_privacy_body">لا يُخزَّن شيء على أي خادم. القائمة ← حفظ السجل يحتفظ بالمحادثات الخاصة على هذه الساعة فقط، وإيقافه يمحوها.</string>
+    <string name="help_language_title">اللغة</string>
+    <string name="help_language_body">تستخدم الساعة لغة Skein نفسها على هاتفك. يمكنك تغييرها من إعدادات التطبيق على الهاتف.</string>
+</resources>

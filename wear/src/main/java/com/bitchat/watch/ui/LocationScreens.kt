@@ -1,5 +1,7 @@
 package com.bitchat.watch.ui
 
+import com.bitchat.watch.R
+import androidx.compose.ui.res.stringResource
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -37,9 +39,19 @@ import com.bitchat.watch.ui.theme.LocalBitchatPalette
 import com.bitchat.watch.ui.theme.colorForPeer
 
 /** "Block", "City"… for a geohash, from its length. */
-internal fun areaLabel(geohash: String): String =
-    GeohashChannelLevel.entries.firstOrNull { it.precision == geohash.length && it != GeohashChannelLevel.BUILDING }
-        ?.displayName?.lowercase()?.replaceFirstChar { it.uppercase() } ?: "Area"
+@androidx.annotation.StringRes
+internal fun areaLabelRes(geohash: String): Int =
+    when (GeohashChannelLevel.entries.firstOrNull { it.precision == geohash.length && it != GeohashChannelLevel.BUILDING }) {
+        GeohashChannelLevel.BLOCK -> R.string.area_block
+        GeohashChannelLevel.NEIGHBORHOOD -> R.string.area_neighborhood
+        GeohashChannelLevel.CITY -> R.string.area_city
+        GeohashChannelLevel.PROVINCE -> R.string.area_province
+        GeohashChannelLevel.REGION -> R.string.area_region
+        else -> R.string.area_generic
+    }
+
+@Composable
+internal fun areaLabel(geohash: String): String = stringResource(areaLabelRes(geohash))
 
 /** Pick an area around you: block, neighborhood, city, province or region. */
 @Composable
@@ -57,14 +69,14 @@ fun LocationChannelsScreen(onOpenChannel: (String) -> Unit) {
         ScalingLazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = padding) {
             item {
                 ListHeader {
-                    Text("Location channels", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.loc_title), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 }
             }
             when (val p = places) {
                 WatchLocationChannels.Places.NoPermission -> {
                     item {
                         Text(
-                            "Public chat with people in your area. Only the approximate area is shared, never your exact location.",
+                            stringResource(R.string.loc_intro),
                             style = MaterialTheme.typography.bodySmall,
                             color = palette.textTertiary,
                             textAlign = TextAlign.Center,
@@ -80,12 +92,12 @@ fun LocationChannelsScreen(onOpenChannel: (String) -> Unit) {
                             },
                             modifier = Modifier.fillMaxWidth(),
                             icon = { Icon(Icons.Filled.MyLocation, contentDescription = null) }
-                        ) { Text("Allow location", maxLines = 1) }
+                        ) { Text(stringResource(R.string.loc_allow), maxLines = 1) }
                     }
                 }
                 WatchLocationChannels.Places.Unknown, WatchLocationChannels.Places.Locating -> item {
                     Text(
-                        "Finding your area…",
+                        stringResource(R.string.loc_finding),
                         style = MaterialTheme.typography.bodySmall,
                         color = palette.textTertiary,
                         textAlign = TextAlign.Center,
@@ -95,7 +107,7 @@ fun LocationChannelsScreen(onOpenChannel: (String) -> Unit) {
                 is WatchLocationChannels.Places.Failed -> {
                     item {
                         Text(
-                            p.reason,
+                            stringResource(p.reason),
                             style = MaterialTheme.typography.bodySmall,
                             color = palette.textTertiary,
                             textAlign = TextAlign.Center,
@@ -104,7 +116,7 @@ fun LocationChannelsScreen(onOpenChannel: (String) -> Unit) {
                     }
                     item {
                         FilledTonalButton(onClick = { channels.refreshPlaces() }, modifier = Modifier.fillMaxWidth()) {
-                            Text("Try again", maxLines = 1)
+                            Text(stringResource(R.string.loc_try_again), maxLines = 1)
                         }
                     }
                 }
@@ -146,7 +158,7 @@ fun LocationChatScreen(geohash: String, onCompose: () -> Unit) {
                     Column {
                         Text(areaLabel(geohash), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         Text(
-                            if (relays > 0) "#$geohash · live" else "#$geohash · connecting…",
+                            stringResource(if (relays > 0) R.string.loc_live else R.string.loc_connecting, geohash),
                             style = MaterialTheme.typography.bodySmall,
                             color = palette.textTertiary
                         )
@@ -156,7 +168,7 @@ fun LocationChatScreen(geohash: String, onCompose: () -> Unit) {
             if (messages.isEmpty()) {
                 item {
                     Text(
-                        "No messages in the last hour",
+                        stringResource(R.string.loc_empty),
                         style = MaterialTheme.typography.bodySmall,
                         color = palette.textTertiary,
                         textAlign = TextAlign.Center,
@@ -174,7 +186,7 @@ fun LocationChatScreen(geohash: String, onCompose: () -> Unit) {
                     )
                     Text(message.content, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
                     if (message.deliveryStatus is com.bitchat.android.model.DeliveryStatus.Failed) {
-                        Text("Not sent", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                        Text(stringResource(R.string.loc_not_sent), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                     }
                 }
             }
@@ -183,7 +195,7 @@ fun LocationChatScreen(geohash: String, onCompose: () -> Unit) {
                     onClick = onCompose,
                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                     icon = { Icon(Icons.Filled.Keyboard, contentDescription = null) }
-                ) { Text("Write", maxLines = 1) }
+                ) { Text(stringResource(R.string.loc_write), maxLines = 1) }
             }
         }
     }

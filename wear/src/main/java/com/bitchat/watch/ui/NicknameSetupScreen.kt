@@ -1,5 +1,7 @@
 package com.bitchat.watch.ui
 
+import com.bitchat.watch.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -56,9 +58,9 @@ import com.bitchat.watch.ui.theme.LocalBitchatPalette
 @Composable
 fun NicknameSetupScreen(
     initialNickname: String,
-    title: String = "Skein",
-    subtitle: String = "Pick a nickname",
-    confirmLabel: String = "Join",
+    title: String = stringResource(R.string.app_name),
+    subtitle: String = stringResource(R.string.nickname_pick),
+    confirmLabel: String = stringResource(R.string.action_join),
     autoFocus: Boolean = false,
     onConfirm: (String) -> Unit,
 ) {
@@ -133,7 +135,7 @@ fun NicknameSetupScreen(
                         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                             if (name.text.isEmpty()) {
                                 Text(
-                                    text = "Nickname",
+                                    text = stringResource(R.string.nickname_title),
                                     style = ChatVisualTokens.MessageBodyStyle,
                                     color = palette.textTertiary,
                                 )

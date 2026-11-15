@@ -1,5 +1,7 @@
 package com.bitchat.watch.ui
 
+import com.bitchat.watch.R
+import androidx.compose.ui.res.stringResource
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -120,7 +122,7 @@ fun ChatActionBar(
         RoundActionButton(onClick = onKeyboard, container = palette.inputButton) {
             Icon(
                 imageVector = Icons.Filled.Keyboard,
-                contentDescription = "Type message",
+                contentDescription = stringResource(R.string.action_type_message),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(ActionIconSize)
             )
@@ -160,7 +162,7 @@ fun ChatActionBar(
         ) {
             Icon(
                 imageVector = Icons.Filled.Mic,
-                contentDescription = "Hold to talk",
+                contentDescription = stringResource(R.string.action_hold_to_talk),
                 tint = micTint,
                 modifier = Modifier.size(ActionIconSize)
             )
@@ -380,7 +382,7 @@ fun VoiceRecordOverlay(
                         ) { cancel ->
                             Icon(
                                 imageVector = if (cancel) Icons.Filled.Close else Icons.Filled.Mic,
-                                contentDescription = if (cancel) "Cancel recording" else null,
+                                contentDescription = if (cancel) stringResource(R.string.action_cancel_recording) else null,
                                 tint = MaterialTheme.colorScheme.onPrimary,
                                 modifier = Modifier.size(iconSize / 2),
                             )
@@ -396,7 +398,7 @@ fun VoiceRecordOverlay(
                 )
                 Text(
                     text =
-                        (if (showLive) "LIVE " else "") +
+                        (if (showLive) stringResource(R.string.voice_live) + " " else "") +
                             "%d:%02d".format(
                                 voice.elapsedMs / 1000 / 60,
                                 voice.elapsedMs / 1000 % 60,
@@ -409,7 +411,7 @@ fun VoiceRecordOverlay(
                     modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
                 )
                 Text(
-                    text = if (hoveringCancel) "Lift to cancel" else "Lift to send",
+                    text = stringResource(if (hoveringCancel) R.string.voice_lift_to_cancel else R.string.voice_lift_to_send),
                     style = ChatVisualTokens.SystemActionStyle,
                     color =
                         if (hoveringCancel) MaterialTheme.colorScheme.error
@@ -420,7 +422,7 @@ fun VoiceRecordOverlay(
                 )
                 // Without this line the cancel gesture is invisible until discovered by luck.
                 Text(
-                    text = "Slide up to cancel",
+                    text = stringResource(R.string.voice_slide_to_cancel),
                     style = ChatVisualTokens.TimestampStyle,
                     color = palette.textTertiary,
                     textAlign = TextAlign.Center,

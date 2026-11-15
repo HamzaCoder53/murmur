@@ -34,6 +34,7 @@
 
     <application
         android:name=".BitchatWatchApplication"
+        android:localeConfig="@xml/locales_config"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -75,7 +76,7 @@
             android:name=".glance.MurmurComplicationService"
             android:exported="true"
             android:icon="@drawable/ic_notification"
-            android:label="Skein messages"
+            android:label="@string/complication_name"
             android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
             <intent-filter>
                 <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />

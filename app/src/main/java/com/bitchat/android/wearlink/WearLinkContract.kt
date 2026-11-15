@@ -38,6 +38,8 @@ object WearLinkContract {
     const val CTL_MIRROR_STATE = CONTROL_PREFIX + "mirror-state"
     /** Watch to phone: send a message on the watch's behalf (MirrorProtocol). */
     const val CTL_MIRROR_COMMAND = CONTROL_PREFIX + "mirror-cmd"
+    /** Phone to any nearby watch: the phone app's language (BCP 47 tag, empty = follow system). */
+    const val CTL_LANGUAGE = CONTROL_PREFIX + "language"
 
     /** File transfers (photos, voice notes) between a linked phone and watch. */
     const val FILE_PREFIX = "/murmur/v1/file/"

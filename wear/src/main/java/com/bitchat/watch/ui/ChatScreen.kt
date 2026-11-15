@@ -1,5 +1,8 @@
 package com.bitchat.watch.ui
 
+import com.bitchat.watch.R
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
@@ -105,7 +108,7 @@ fun ChatScreen(
     ChatScaffold(
         messages = messages,
         myPeerID = myPeerID,
-        emptyText = "No messages yet\nSay hi to the mesh",
+        emptyText = stringResource(R.string.chat_empty),
         voice = voice,
         onOpenImage = { viewerPath = it },
         header = { expanded ->
@@ -158,12 +161,12 @@ private fun ChatHeader(
     // round screen instead of clipping at the edges.
     WearChatHeader(
         fontSize = titleSize,
-        onClickLabel = "Open people",
+        onClickLabel = stringResource(R.string.chat_open_people),
         onClick = onOpenPeople,
     ) {
         if (unreadDms == 0) {
             Text(
-                text = "Skein",
+                text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.titleSmall,
                 fontSize = titleSize.sp,
                 lineHeight = (titleSize * 1.3f).sp,
@@ -176,7 +179,7 @@ private fun ChatHeader(
         }
         Icon(
             imageVector = Icons.Filled.People,
-            contentDescription = "People",
+            contentDescription = stringResource(R.string.people_title),
             tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(iconSize),
         )
@@ -249,7 +252,7 @@ fun MessageItem(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = if (isSelf) "you" else message.sender,
+                text = if (isSelf) stringResource(R.string.sender_you) else message.sender,
                 style = ChatVisualTokens.SenderStyle,
                 color = senderColor,
                 maxLines = 1,
@@ -287,8 +290,9 @@ fun MessageItem(
     }
 }
 
+@androidx.compose.runtime.Composable
 internal fun unreadDescription(count: Int): String =
-    if (count == 1) "1 unread message" else "$count unread messages"
+    pluralStringResource(R.plurals.unread_messages, count, count)
 
 private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 

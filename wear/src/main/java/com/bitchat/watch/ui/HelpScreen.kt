@@ -1,5 +1,8 @@
 package com.bitchat.watch.ui
 
+import androidx.annotation.StringRes
+import com.bitchat.watch.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,72 +19,25 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 
-/** One card of the "How it works" guide. */
-internal data class HelpTopic(val title: String, val body: String)
+/** One card of the "How it works" guide, as string resources so it follows the watch's language. */
+internal data class HelpTopic(@StringRes val title: Int, @StringRes val body: Int)
 
 /** The watch's built-in guide, short enough to read on a wrist. */
 internal object HelpContent {
     val topics = listOf(
-        HelpTopic(
-            "Chat nearby",
-            "No account or phone number. Messages go phone to phone and watch to watch over " +
-                "Bluetooth, hopping through up to 7 devices. Works with Bitchat users too."
-        ),
-        HelpTopic(
-            "Public and private",
-            "The main chat is public to everyone nearby. Tap a name to message privately: " +
-                "private chats are encrypted end to end."
-        ),
-        HelpTopic(
-            "With your phone",
-            "With Skein open on your phone, the watch turns its own radio off and sends " +
-                "through the phone. People → Link shows Phone."
-        ),
-        HelpTopic(
-            "Link to phone",
-            "Menu → Link to phone gives the watch your phone's identity: one inbox on both, " +
-                "same name, photos and read status in sync. Confirm on the phone."
-        ),
-        HelpTopic(
-            "On its own",
-            "Away from the phone the watch uses its own Bluetooth, scanning briefly each " +
-                "minute to save battery. People → Link shows Own radio."
-        ),
-        HelpTopic(
-            "Favorites",
-            "In a chat, tap the name at the top, then Favorite. When you both favorite each " +
-                "other (Mutual) you can message over the internet when far apart."
-        ),
-        HelpTopic(
-            "Internet messages",
-            "For mutual favorites out of Bluetooth range, messages go over the internet " +
-                "through public Nostr relays. They are encrypted: relays can't read them."
-        ),
-        HelpTopic(
-            "How often",
-            "Menu → Internet DMs: Off, every 5 min, every 1 min or Always on. Always on is " +
-                "fastest and uses the most battery. Check now fetches at once."
-        ),
-        HelpTopic(
-            "Location chat",
-            "Menu → Location chat: public chat with people in your block, neighborhood or city, " +
-                "over the internet. Only the approximate area is shared."
-        ),
-        HelpTopic(
-            "Tile",
-            "Swipe left on the watch face, tap +, choose Skein: new messages, people nearby " +
-                "and Phone or Own radio at a glance."
-        ),
-        HelpTopic(
-            "Complication",
-            "Long-press the watch face → Edit → Complications → Skein messages for an unread " +
-                "count on your watch face."
-        ),
-        HelpTopic(
-            "Privacy",
-            "Nothing is stored on a server. Menu → Save history keeps private chats on this " +
-                "watch only; turn it off to erase them."
-        )
+        HelpTopic(R.string.help_nearby_title, R.string.help_nearby_body),
+        HelpTopic(R.string.help_public_title, R.string.help_public_body),
+        HelpTopic(R.string.help_phone_title, R.string.help_phone_body),
+        HelpTopic(R.string.help_link_title, R.string.help_link_body),
+        HelpTopic(R.string.help_alone_title, R.string.help_alone_body),
+        HelpTopic(R.string.help_favorites_title, R.string.help_favorites_body),
+        HelpTopic(R.string.help_internet_title, R.string.help_internet_body),
+        HelpTopic(R.string.help_frequency_title, R.string.help_frequency_body),
+        HelpTopic(R.string.help_location_title, R.string.help_location_body),
+        HelpTopic(R.string.help_tile_title, R.string.help_tile_body),
+        HelpTopic(R.string.help_complication_title, R.string.help_complication_body),
+        HelpTopic(R.string.help_privacy_title, R.string.help_privacy_body),
+        HelpTopic(R.string.help_language_title, R.string.help_language_body),
     )
 }
 
@@ -97,7 +53,7 @@ fun HelpScreen() {
             item {
                 ListHeader {
                     Text(
-                        text = "How it works",
+                        text = stringResource(R.string.help_title),
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
                     )
@@ -110,12 +66,12 @@ fun HelpScreen() {
                         .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
                     Text(
-                        text = topic.title,
+                        text = stringResource(topic.title),
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
-                        text = topic.body,
+                        text = stringResource(topic.body),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(top = 2.dp),

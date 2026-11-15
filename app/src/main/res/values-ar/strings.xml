@@ -402,4 +402,16 @@
     <string name="cd_show_whole_globe">عرض الكرة الأرضية كاملة</string>
     <string name="cd_globe_activity">%1$d محادثات نشطة، %2$d أشخاص متصلون</string>
     <string name="cd_channel_activity">%1$d أشخاص، %2$d رسائل في الساعة الأخيرة</string>
+  <string name="about_save_history_title">حفظ سجل الرسائل</string>
+  <string name="about_save_history_desc">الاحتفاظ بالمحادثات الخاصة على هذا الهاتف، مشفّرةً، بعد إغلاق التطبيق.</string>
+  <string name="about_save_history_off_title">إيقاف حفظ السجل؟</string>
+  <string name="about_save_history_off_message">سيُمحى سجل المحادثات الخاصة المحفوظ على هذا الهاتف. تبقى المحادثات المعروضة حتى يُغلق التطبيق. لا يمكن التراجع عن ذلك.</string>
+  <string name="about_save_history_off_confirm">امسح وأوقف</string>
+  <string name="watch_link_channel">ربط الساعة</string>
+  <string name="watch_link_default_name">ساعتك</string>
+  <string name="watch_link_title">ربط %1$s؟</string>
+  <string name="watch_link_text">ستستخدم هوية Skein الخاصة بهذا الهاتف وسترى محادثاتك.</string>
+  <string name="watch_link_big_text">تريد %1$s استخدام هوية Skein الخاصة بهذا الهاتف. ستتمكن من قراءة رسائلك وإرسالها، حتى بعيدًا عن الهاتف. لا تسمح بذلك إلا لساعتك أنت.</string>
+  <string name="watch_link_deny">رفض</string>
+  <string name="watch_link_allow">سماح</string>
 </resources>

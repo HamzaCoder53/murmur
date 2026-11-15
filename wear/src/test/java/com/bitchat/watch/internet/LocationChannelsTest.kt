@@ -3,7 +3,7 @@ package com.bitchat.watch.internet
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.bitchat.android.geohash.GeohashChannelLevel
-import com.bitchat.watch.ui.areaLabel
+import com.bitchat.watch.ui.areaLabelRes
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
@@ -48,10 +48,10 @@ class LocationChannelsTest {
 
     @Test
     fun `areas are named by geohash length`() {
-        assertEquals("Block", areaLabel("9q9hvum"))
-        assertEquals("Neighborhood", areaLabel("9q9hvu"))
-        assertEquals("City", areaLabel("9q9hv"))
-        assertEquals("Province", areaLabel("9q9h"))
-        assertEquals("Region", areaLabel("9q"))
+        assertEquals("Block", com.bitchat.watch.testing.ResourceStrings.get(areaLabelRes("9q9hvum")))
+        assertEquals("Neighborhood", com.bitchat.watch.testing.ResourceStrings.get(areaLabelRes("9q9hvu")))
+        assertEquals("City", com.bitchat.watch.testing.ResourceStrings.get(areaLabelRes("9q9hv")))
+        assertEquals("Province", com.bitchat.watch.testing.ResourceStrings.get(areaLabelRes("9q9h")))
+        assertEquals("Region", com.bitchat.watch.testing.ResourceStrings.get(areaLabelRes("9q")))
     }
 }

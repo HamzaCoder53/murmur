@@ -1,5 +1,6 @@
 package com.bitchat.watch.internet
 
+import com.bitchat.watch.R
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -75,11 +76,11 @@ class WatchNostrClient(
 ) {
     /** An internet connection borrowed for one job; [release] hands it back. */
     class Lease(val client: OkHttpClient, val release: () -> Unit)
-    enum class Mode(val label: String, val intervalMs: Long?) {
-        OFF("Off", null),
-        EVERY_5_MIN("Every 5 min", 5 * 60_000L),
-        EVERY_1_MIN("Every 1 min", 60_000L),
-        ALWAYS("Always on", null)
+    enum class Mode(@androidx.annotation.StringRes val labelRes: Int, val intervalMs: Long?) {
+        OFF(R.string.internet_mode_off, null),
+        EVERY_5_MIN(R.string.internet_mode_5, 5 * 60_000L),
+        EVERY_1_MIN(R.string.internet_mode_1, 60_000L),
+        ALWAYS(R.string.internet_mode_always, null)
     }
 
     data class Status(
@@ -88,7 +89,8 @@ class WatchNostrClient(
         val checking: Boolean = false,
         val connectedRelays: Int = 0,
         val lastCheckMs: Long? = null,
-        val lastError: String? = null
+        /** What went wrong last time, as a text resource; null when the last check worked. */
+        @androidx.annotation.StringRes val lastErrorRes: Int? = null
     )
 
     companion object {
@@ -313,13 +315,13 @@ class WatchNostrClient(
         if (!running || suspended) return
         if (!fetchLock.tryLock()) return
         try {
-            _status.value = _status.value.copy(checking = true, lastError = null)
+            _status.value = _status.value.copy(checking = true, lastErrorRes = null)
             val identity = identityProvider() ?: run {
-                _status.value = _status.value.copy(checking = false, lastError = "No internet identity")
+                _status.value = _status.value.copy(checking = false, lastErrorRes = R.string.internet_error_identity)
                 return
             }
             val lease = lease() ?: run {
-                _status.value = _status.value.copy(checking = false, lastError = "No internet connection")
+                _status.value = _status.value.copy(checking = false, lastErrorRes = R.string.internet_error_connection)
                 return
             }
             try {
@@ -358,7 +360,7 @@ class WatchNostrClient(
                 _status.value = _status.value.copy(
                     checking = false,
                     lastCheckMs = System.currentTimeMillis(),
-                    lastError = if (reached == 0) "Relays unreachable" else null
+                    lastErrorRes = if (reached == 0) R.string.internet_error_relays else null
                 )
             } finally {
                 lease.release()
@@ -379,7 +381,7 @@ class WatchNostrClient(
                 val identity = identityProvider()
                 val acquired = if (identity != null) acquireNetwork() else null
                 if (identity == null || acquired == null) {
-                    _status.value = _status.value.copy(lastError = "No internet connection")
+                    _status.value = _status.value.copy(lastErrorRes = R.string.internet_error_connection)
                     delay(backoffMs)
                     backoffMs = (backoffMs * 2).coerceAtMost(120_000L)
                     continue
@@ -422,7 +424,7 @@ class WatchNostrClient(
                     })
                 }
                 backoffMs = 5_000L
-                _status.value = _status.value.copy(lastError = null, lastCheckMs = System.currentTimeMillis())
+                _status.value = _status.value.copy(lastErrorRes = null, lastCheckMs = System.currentTimeMillis())
                 closed.await()
                 runCatching { connectivity.unregisterNetworkCallback(callback) }
                 liveNetworkCallback = null

@@ -1,5 +1,6 @@
 package com.bitchat.watch.ui
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -114,7 +115,7 @@ fun UserDetailScreen(
                     }
                 ) {
                     Text(
-                        text = if (identity.isFavorite) "Favorited" else "Favorite",
+                        text = stringResource(if (identity.isFavorite) R.string.user_favorited else R.string.user_favorite),
                         maxLines = 1
                     )
                 }
@@ -143,7 +144,7 @@ fun UserDetailScreen(
                     secondaryLabel = if (identity.isVerified) null else {
                         {
                             Text(
-                                text = "Compare codes",
+                                text = stringResource(R.string.user_compare_codes),
                                 style = ChatVisualTokens.SystemActionStyle,
                                 color = palette.textTertiary,
                                 maxLines = 1
@@ -152,7 +153,7 @@ fun UserDetailScreen(
                     }
                 ) {
                     Text(
-                        text = if (identity.isVerified) "Verified" else "Verify",
+                        text = stringResource(if (identity.isVerified) R.string.user_verified else R.string.user_verify),
                         maxLines = 1
                     )
                 }
@@ -161,8 +162,9 @@ fun UserDetailScreen(
     }
 }
 
+@Composable
 private fun favoriteSubtitle(identity: WearPeerIdentitySnapshot): String? = when {
-    identity.isFavorite && identity.theyFavoritedUs -> "Mutual"
-    identity.theyFavoritedUs -> "Favors you"
+    identity.isFavorite && identity.theyFavoritedUs -> stringResource(R.string.user_mutual)
+    identity.theyFavoritedUs -> stringResource(R.string.user_favors_you)
     else -> null
 }

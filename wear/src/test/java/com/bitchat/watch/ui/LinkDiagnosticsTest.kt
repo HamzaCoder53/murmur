@@ -1,5 +1,6 @@
 package com.bitchat.watch.ui
 
+import com.bitchat.watch.R
 import com.bitchat.watch.link.LinkMode
 import com.bitchat.watch.rendezvous.RendezvousEngine.Phase
 import com.bitchat.watch.rendezvous.RendezvousEngine.Status
@@ -12,7 +13,20 @@ import org.junit.Test
 class LinkDiagnosticsTest {
 
     private fun lines(mode: LinkMode, status: Status, offsetMs: Long = 0L) =
-        LinkDiagnostics.lines(mode, status, offsetMs) { "t$it" }.associate { it.label to it.value }
+        LinkDiagnostics.lines(mode, status, offsetMs, { english.getValue(it) }) { "t$it" }
+            .associate { it.label to it.value }
+
+    private val english = mapOf(
+        R.string.diag_link to "Link", R.string.diag_phone to "Phone", R.string.diag_own_radio to "Own radio",
+        R.string.diag_scan to "Scan", R.string.diag_scan_off to "Off, phone relays",
+        R.string.diag_next_scan to "Next scan", R.string.diag_timing to "Timing",
+        R.string.diag_precise to "Precise", R.string.diag_approximate to "Approximate",
+        R.string.diag_last_scan to "Last scan", R.string.diag_peer_seen to "Peer seen",
+        R.string.diag_no_one to "No one", R.string.diag_scans_done to "Scans done",
+        R.string.diag_clock_offset to "Clock offset", R.string.diag_bluetooth_off to "Bluetooth off",
+        R.string.diag_active_app_open to "Active, app open", R.string.diag_scanning_now to "Scanning now",
+        R.string.diag_searching to "Searching", R.string.diag_synced to "Synced"
+    )
 
     @Test
     fun `tethered shows the phone carrying the mesh and nothing about scanning`() {

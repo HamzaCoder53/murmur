@@ -1,5 +1,7 @@
 package com.bitchat.watch.ui.media
 
+import com.bitchat.watch.R
+import androidx.compose.ui.res.stringResource
 import android.graphics.BitmapFactory
 import android.media.MediaPlayer
 import androidx.compose.foundation.Canvas
@@ -78,7 +80,7 @@ fun ImageMessageItem(path: String, onOpen: (String) -> Unit) {
     }
     Image(
         painter = BitmapPainter(bitmap.asImageBitmap()),
-        contentDescription = "image",
+        contentDescription = stringResource(R.string.cd_image),
         contentScale = ContentScale.Crop,
         modifier = Modifier
             .padding(top = 2.dp)
@@ -111,7 +113,7 @@ fun FullScreenImageViewer(path: String, onClose: () -> Unit) {
                 .fillMaxSize()
                 .graphicsLayer { alpha = reveal.value }
                 .background(Color.Black)
-                .clickable(onClickLabel = "Close") { onClose() },
+                .clickable(onClickLabel = stringResource(R.string.cd_close)) { onClose() },
             contentAlignment = Alignment.Center
         ) {
             val bitmap = remember(path) { BitmapFactory.decodeFile(path) }
@@ -127,7 +129,7 @@ fun FullScreenImageViewer(path: String, onClose: () -> Unit) {
                 }
                 Image(
                     painter = BitmapPainter(bitmap.asImageBitmap()),
-                    contentDescription = "Image",
+                    contentDescription = stringResource(R.string.cd_image),
                     contentScale = ContentScale.Fit,
                     modifier = imageModifier
                         .graphicsLayer {
@@ -213,7 +215,7 @@ fun VoiceNoteItem(path: String, messageID: String? = null) {
     ) {
         if (isLive) {
             Text(
-                text = "LIVE",
+                text = stringResource(R.string.voice_live),
                 color = palette.accentOrange,
                 style = ChatVisualTokens.SystemActionStyle,
                 modifier = Modifier.padding(end = 4.dp)
@@ -237,7 +239,7 @@ fun VoiceNoteItem(path: String, messageID: String? = null) {
         ) {
             Icon(
                 imageVector = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = if (playing) "Pause" else "Play",
+                contentDescription = stringResource(if (playing) R.string.cd_pause else R.string.cd_play),
                 tint = MaterialTheme.colorScheme.onPrimary,
                 modifier = Modifier.size(16.dp)
             )

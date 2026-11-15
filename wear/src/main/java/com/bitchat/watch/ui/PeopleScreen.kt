@@ -1,5 +1,6 @@
 package com.bitchat.watch.ui
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -73,7 +74,7 @@ fun PeopleScreen(onOpenDm: (String) -> Unit, onEditNickname: () -> Unit) {
                 ListHeader {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = "People",
+                            text = stringResource(R.string.people_title),
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold
                         )
@@ -89,14 +90,14 @@ fun PeopleScreen(onOpenDm: (String) -> Unit, onEditNickname: () -> Unit) {
             }
             item(key = "self") {
                 SelfRow(
-                    nickname = mesh?.nickname ?: "me",
+                    nickname = mesh?.nickname ?: stringResource(R.string.people_me),
                     onClick = onEditNickname
                 )
             }
             if (peers.isEmpty()) {
                 item {
                     Text(
-                        text = "No one nearby yet\nScanning…",
+                        text = stringResource(R.string.people_empty),
                         style = ChatVisualTokens.SystemActionStyle,
                         color = palette.textTertiary,
                         textAlign = TextAlign.Center,
@@ -132,7 +133,7 @@ private fun SelfRow(nickname: String, onClick: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         secondaryLabel = {
             Text(
-                text = "You · rename",
+                text = stringResource(R.string.people_you_rename),
                 style = ChatVisualTokens.SystemActionStyle,
                 color = palette.textTertiary,
                 maxLines = 1
@@ -204,7 +205,7 @@ private fun PersonRow(
                 if (isFavorite) {
                     Icon(
                         painter = painterResource(R.drawable.ic_spec_star_filled),
-                        contentDescription = "Favorite",
+                        contentDescription = stringResource(R.string.cd_favorite),
                         tint = palette.accentOrange,
                         modifier = Modifier
                             .padding(start = 4.dp)
@@ -214,7 +215,7 @@ private fun PersonRow(
                 if (isVerified) {
                     Icon(
                         imageVector = Icons.Filled.Verified,
-                        contentDescription = "Verified",
+                        contentDescription = stringResource(R.string.cd_verified),
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
                             .padding(start = 4.dp)

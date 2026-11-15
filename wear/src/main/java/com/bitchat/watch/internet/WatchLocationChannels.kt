@@ -74,7 +74,7 @@ class WatchLocationChannels(
         data object Unknown : Places
         data object Locating : Places
         data object NoPermission : Places
-        data class Failed(val reason: String) : Places
+        data class Failed(@androidx.annotation.StringRes val reason: Int) : Places
         data class Found(val channels: List<GeohashChannel>) : Places
     }
 
@@ -131,7 +131,7 @@ class WatchLocationChannels(
                 null
             }
             _places.value = if (location == null) {
-                Places.Failed("Location unavailable")
+                Places.Failed(com.bitchat.watch.R.string.loc_unavailable)
             } else {
                 Places.Found(channelsAt(location.latitude, location.longitude, hasFinePermission()))
             }

@@ -154,6 +154,7 @@ class LinkedPhoneClient(
 
     private fun onControl(nodeId: String, path: String, data: ByteArray) {
         when (path) {
+            WearLinkContract.CTL_LANGUAGE -> PhoneLanguageSync.onPhoneLanguage(context, data)
             WearLinkContract.CTL_LINK_IDENTITY -> if (!linked) adoptIdentity(data)
             WearLinkContract.CTL_LINK_DENIED -> if (!linked) _state.value = State.DENIED
             WearLinkContract.CTL_WIPE -> if (linked) {

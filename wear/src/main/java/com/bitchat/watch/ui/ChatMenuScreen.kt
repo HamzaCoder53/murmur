@@ -1,5 +1,8 @@
 package com.bitchat.watch.ui
 
+import com.bitchat.watch.R
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -110,7 +113,7 @@ fun ChatMenuScreen(onQuit: () -> Unit, onOpenHelp: () -> Unit = {}, onOpenLocati
             item {
                 ListHeader {
                     Text(
-                        text = "Skein",
+                        text = stringResource(R.string.app_name),
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
                     )
@@ -134,10 +137,10 @@ fun ChatMenuScreen(onQuit: () -> Unit, onOpenHelp: () -> Unit = {}, onOpenLocati
                     },
                     modifier = Modifier.fillMaxWidth(),
                     secondaryLabel = {
-                        Text("Real-time", maxLines = 1)
+                        Text(stringResource(R.string.menu_live_talk_detail), maxLines = 1)
                     },
                 ) {
-                    Text("Live talk", maxLines = 1)
+                    Text(stringResource(R.string.menu_live_talk), maxLines = 1)
                 }
             }
             item {
@@ -152,10 +155,10 @@ fun ChatMenuScreen(onQuit: () -> Unit, onOpenHelp: () -> Unit = {}, onOpenLocati
                     },
                     modifier = Modifier.fillMaxWidth(),
                     secondaryLabel = {
-                        Text("Private chats", maxLines = 1)
+                        Text(stringResource(R.string.menu_save_history_detail), maxLines = 1)
                     },
                 ) {
-                    Text("Save history", maxLines = 1)
+                    Text(stringResource(R.string.menu_save_history), maxLines = 1)
                 }
             }
             item {
@@ -163,9 +166,9 @@ fun ChatMenuScreen(onQuit: () -> Unit, onOpenHelp: () -> Unit = {}, onOpenLocati
                     onClick = onOpenLocations,
                     modifier = Modifier.fillMaxWidth(),
                     icon = { Icon(imageVector = Icons.Filled.LocationOn, contentDescription = null) },
-                    secondaryLabel = { Text("Chat in your area", color = palette.textTertiary, maxLines = 1) },
+                    secondaryLabel = { Text(stringResource(R.string.menu_location_chat_detail), color = palette.textTertiary, maxLines = 1) },
                 ) {
-                    Text("Location chat", maxLines = 1)
+                    Text(stringResource(R.string.menu_location_chat), maxLines = 1)
                 }
             }
             item {
@@ -173,9 +176,9 @@ fun ChatMenuScreen(onQuit: () -> Unit, onOpenHelp: () -> Unit = {}, onOpenLocati
                     onClick = onOpenHelp,
                     modifier = Modifier.fillMaxWidth(),
                     icon = { Icon(imageVector = Icons.Filled.HelpOutline, contentDescription = null) },
-                    secondaryLabel = { Text("Guide", color = palette.textTertiary, maxLines = 1) },
+                    secondaryLabel = { Text(stringResource(R.string.menu_help_detail), color = palette.textTertiary, maxLines = 1) },
                 ) {
-                    Text("How it works", maxLines = 1)
+                    Text(stringResource(R.string.menu_help), maxLines = 1)
                 }
             }
             val internet = com.bitchat.watch.mesh.WearMeshService.peek()?.internet
@@ -205,13 +208,13 @@ fun ChatMenuScreen(onQuit: () -> Unit, onOpenHelp: () -> Unit = {}, onOpenLocati
                     },
                     secondaryLabel = {
                         Text(
-                            text = "Ends mesh",
+                            text = stringResource(R.string.menu_quit_detail),
                             color = palette.textTertiary,
                             maxLines = 1,
                         )
                     },
                 ) {
-                    Text("Quit", maxLines = 1)
+                    Text(stringResource(R.string.menu_quit), maxLines = 1)
                 }
             }
         }
@@ -220,9 +223,9 @@ fun ChatMenuScreen(onQuit: () -> Unit, onOpenHelp: () -> Unit = {}, onOpenLocati
     AlertDialog(
         visible = confirmLink,
         onDismissRequest = { confirmLink = false },
-        title = { Text("Link to phone?") },
+        title = { Text(stringResource(R.string.dialog_link_title)) },
         text = {
-            Text("Uses your phone's identity, so messages reach both. This watch's identity and saved chats are erased.")
+            Text(stringResource(R.string.dialog_link_text))
         },
         confirmButton = {
             AlertDialogDefaults.ConfirmButton(onClick = {
@@ -236,8 +239,8 @@ fun ChatMenuScreen(onQuit: () -> Unit, onOpenHelp: () -> Unit = {}, onOpenLocati
     AlertDialog(
         visible = confirmUnlink,
         onDismissRequest = { confirmUnlink = false },
-        title = { Text("Unlink phone?") },
-        text = { Text("This watch gets a new identity of its own. Its saved chats are erased.") },
+        title = { Text(stringResource(R.string.dialog_unlink_title)) },
+        text = { Text(stringResource(R.string.dialog_unlink_text)) },
         confirmButton = {
             AlertDialogDefaults.ConfirmButton(
                 onClick = {
@@ -256,8 +259,8 @@ fun ChatMenuScreen(onQuit: () -> Unit, onOpenHelp: () -> Unit = {}, onOpenLocati
     AlertDialog(
         visible = confirmEraseHistory,
         onDismissRequest = { confirmEraseHistory = false },
-        title = { Text("Erase saved chats?") },
-        text = { Text("Stops saving and erases private chats saved on this watch.") },
+        title = { Text(stringResource(R.string.dialog_erase_title)) },
+        text = { Text(stringResource(R.string.dialog_erase_text)) },
         confirmButton = {
             AlertDialogDefaults.ConfirmButton(
                 onClick = {
@@ -286,7 +289,7 @@ fun ChatMenuScreen(onQuit: () -> Unit, onOpenHelp: () -> Unit = {}, onOpenLocati
                 modifier = Modifier.size(32.dp),
             )
         },
-        title = { Text("Quit Skein?") },
+        title = { Text(stringResource(R.string.dialog_quit_title)) },
         confirmButton = {
             // Quitting tears the mesh down, so confirm carries the error color, not primary.
             AlertDialogDefaults.ConfirmButton(
@@ -306,11 +309,10 @@ fun ChatMenuScreen(onQuit: () -> Unit, onOpenHelp: () -> Unit = {}, onOpenLocati
     )
 }
 
-private fun meshStatusText(count: Int): String = when (count) {
-    0 -> "Mesh on · scanning"
-    1 -> "Mesh on · 1 peer"
-    else -> "Mesh on · $count peers"
-}
+@Composable
+private fun meshStatusText(count: Int): String =
+    if (count == 0) stringResource(R.string.mesh_status_scanning)
+    else pluralStringResource(R.plurals.mesh_status_peers, count, count)
 
 @Composable
 private fun LinkPhoneButton(
@@ -323,12 +325,12 @@ private fun LinkPhoneButton(
     val busy = state == com.bitchat.watch.link.LinkedPhoneClient.State.REQUESTING ||
         state == com.bitchat.watch.link.LinkedPhoneClient.State.RESTARTING
     val detail = when (state) {
-        com.bitchat.watch.link.LinkedPhoneClient.State.NOT_LINKED -> "Share phone's identity"
-        com.bitchat.watch.link.LinkedPhoneClient.State.NO_PHONE -> "Open Skein on phone"
-        com.bitchat.watch.link.LinkedPhoneClient.State.REQUESTING -> "Confirm on phone"
-        com.bitchat.watch.link.LinkedPhoneClient.State.DENIED -> "Not allowed on phone"
-        com.bitchat.watch.link.LinkedPhoneClient.State.LINKED -> "Same identity as phone"
-        com.bitchat.watch.link.LinkedPhoneClient.State.RESTARTING -> "Restarting Skein"
+        com.bitchat.watch.link.LinkedPhoneClient.State.NOT_LINKED -> stringResource(R.string.link_state_not_linked)
+        com.bitchat.watch.link.LinkedPhoneClient.State.NO_PHONE -> stringResource(R.string.link_state_no_phone)
+        com.bitchat.watch.link.LinkedPhoneClient.State.REQUESTING -> stringResource(R.string.link_state_requesting)
+        com.bitchat.watch.link.LinkedPhoneClient.State.DENIED -> stringResource(R.string.link_state_denied)
+        com.bitchat.watch.link.LinkedPhoneClient.State.LINKED -> stringResource(R.string.link_state_linked)
+        com.bitchat.watch.link.LinkedPhoneClient.State.RESTARTING -> stringResource(R.string.link_state_restarting)
     }
     FilledTonalButton(
         onClick = { if (linked) onUnlink() else onLink() },
@@ -344,7 +346,7 @@ private fun LinkPhoneButton(
             Text(text = detail, color = palette.textTertiary, maxLines = 1)
         },
     ) {
-        Text(if (linked) "Unlink phone" else "Link to phone", maxLines = 1)
+        Text(stringResource(if (linked) R.string.link_button_unlink else R.string.link_button_link), maxLines = 1)
     }
 }
 
@@ -357,9 +359,9 @@ private fun InternetModeButton(client: com.bitchat.watch.internet.WatchNostrClie
         onClick = { client.setMode(modes[(modes.indexOf(status.mode) + 1) % modes.size]) },
         modifier = Modifier.fillMaxWidth(),
         icon = { Icon(imageVector = Icons.Filled.Public, contentDescription = null) },
-        secondaryLabel = { Text(text = status.mode.label, color = palette.textTertiary, maxLines = 1) },
+        secondaryLabel = { Text(text = stringResource(status.mode.labelRes), color = palette.textTertiary, maxLines = 1) },
     ) {
-        Text("Internet DMs", maxLines = 1)
+        Text(stringResource(R.string.internet_dms), maxLines = 1)
     }
 }
 
@@ -369,14 +371,16 @@ private fun InternetCheckButton(client: com.bitchat.watch.internet.WatchNostrCli
     val status by client.status.collectAsState()
     val linkedNearby = com.bitchat.watch.mesh.WearMeshService.peek()?.isMirrored == true
     val detail = when {
-        linkedNearby -> "Phone checks for you"
-        status.checking -> "Checking…"
-        status.lastError != null -> status.lastError!!
+        linkedNearby -> stringResource(R.string.internet_phone_checks)
+        status.checking -> stringResource(R.string.internet_checking)
+        status.lastErrorRes != null -> stringResource(status.lastErrorRes!!)
         status.mode == com.bitchat.watch.internet.WatchNostrClient.Mode.ALWAYS && status.connectedRelays > 0 ->
-            "Live · ${status.connectedRelays} relays"
-        status.lastCheckMs != null -> "Checked " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-            .format(java.util.Date(status.lastCheckMs!!))
-        else -> "Not checked yet"
+            pluralStringResource(R.plurals.internet_live_relays, status.connectedRelays, status.connectedRelays)
+        status.lastCheckMs != null -> stringResource(
+            R.string.internet_checked_at,
+            java.text.SimpleDateFormat("HH:mm", androidx.compose.ui.platform.LocalConfiguration.current.locales[0]).format(java.util.Date(status.lastCheckMs!!))
+        )
+        else -> stringResource(R.string.internet_not_checked)
     }
     FilledTonalButton(
         onClick = { client.checkNow() },
@@ -385,6 +389,6 @@ private fun InternetCheckButton(client: com.bitchat.watch.internet.WatchNostrCli
         icon = { Icon(imageVector = Icons.Filled.Refresh, contentDescription = null) },
         secondaryLabel = { Text(text = detail, color = palette.textTertiary, maxLines = 1) },
     ) {
-        Text("Check now", maxLines = 1)
+        Text(stringResource(R.string.internet_check_now), maxLines = 1)
     }
 }

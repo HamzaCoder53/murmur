@@ -1,5 +1,6 @@
 package com.bitchat.watch.ui
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,7 +55,7 @@ fun PeerDebugScreen() {
             item {
                 ListHeader {
                     Text(
-                        text = "Peers (${peers.size})",
+                        text = stringResource(R.string.debug_peers, peers.size),
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
                     )
@@ -63,7 +64,7 @@ fun PeerDebugScreen() {
             if (peers.isEmpty()) {
                 item {
                     Text(
-                        text = "Scanning for nearby devices…",
+                        text = stringResource(R.string.debug_scanning),
                         style = MaterialTheme.typography.bodySmall,
                         color = palette.textTertiary,
                         textAlign = TextAlign.Center,
@@ -104,7 +105,7 @@ fun PeerDebugScreen() {
                     if (identity.isFavorite) {
                         Icon(
                             painter = painterResource(R.drawable.ic_spec_star_filled),
-                            contentDescription = "Favorite",
+                            contentDescription = stringResource(R.string.cd_favorite),
                             tint = palette.accentOrange,
                             modifier = Modifier
                                 .padding(start = 4.dp)
@@ -114,7 +115,7 @@ fun PeerDebugScreen() {
                     if (identity.isVerified) {
                         Icon(
                             imageVector = Icons.Filled.Verified,
-                            contentDescription = "Verified",
+                            contentDescription = stringResource(R.string.cd_verified),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
                                 .padding(start = 4.dp)

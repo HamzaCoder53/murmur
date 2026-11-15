@@ -1,5 +1,6 @@
 package com.bitchat.watch.ui
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
@@ -115,7 +116,7 @@ fun DmScreen(
     ChatScaffold(
         messages = messages,
         myPeerID = myPeerID,
-        emptyText = if (sessionEstablished) "Encrypted\nSay hi" else "Securing…",
+        emptyText = stringResource(if (sessionEstablished) R.string.dm_empty_encrypted else R.string.dm_securing),
         voice = voice,
         onOpenImage = { viewerPath = it },
         header = { expanded ->
@@ -172,7 +173,7 @@ private fun DmHeader(
 
     WearChatHeader(
         fontSize = headerTitleSize,
-        onClickLabel = "Open user details",
+        onClickLabel = stringResource(R.string.dm_open_details),
         onClick = onClick,
     ) {
         Text(
@@ -196,7 +197,7 @@ private fun DmHeader(
         if (isFavorite) {
             Icon(
                 painter = painterResource(R.drawable.ic_spec_star_filled),
-                contentDescription = "Favorite",
+                contentDescription = stringResource(R.string.cd_favorite),
                 tint = palette.accentOrange,
                 modifier = Modifier.padding(start = 4.dp).size(headerIconSize),
             )
@@ -204,7 +205,7 @@ private fun DmHeader(
         if (isVerified) {
             Icon(
                 imageVector = Icons.Filled.Verified,
-                contentDescription = "Verified",
+                contentDescription = stringResource(R.string.cd_verified),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(start = 4.dp).size(headerIconSize),
             )

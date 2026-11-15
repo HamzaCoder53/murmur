@@ -1,5 +1,7 @@
 package com.bitchat.watch.ui
 
+import com.bitchat.watch.R
+import androidx.compose.ui.res.stringResource
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -41,41 +43,49 @@ object LinkDiagnostics {
 
     data class Line(val label: String, val value: String)
 
+    /** [text] resolves a string resource, so the rows follow the watch's language. */
     fun lines(
         mode: LinkMode,
         status: RendezvousEngine.Status,
         clockOffsetMs: Long,
+        text: (Int) -> String,
         formatTime: (Long) -> String
     ): List<Line> {
+        fun line(label: Int, value: String) = Line(text(label), value)
         if (mode == LinkMode.TETHERED) {
             return listOf(
-                Line("Link", "Phone"),
-                Line("Scan", "Off, phone relays")
+                line(R.string.diag_link, text(R.string.diag_phone)),
+                line(R.string.diag_scan, text(R.string.diag_scan_off))
             )
         }
         val lines = ArrayList<Line>()
-        lines += Line("Link", "Own radio")
-        lines += Line("Scan", scanLabel(status))
-        status.nextWindowWallMs?.let { lines += Line("Next scan", formatTime(it)) }
+        lines += line(R.string.diag_link, text(R.string.diag_own_radio))
+        lines += line(R.string.diag_scan, text(scanLabel(status)))
+        status.nextWindowWallMs?.let { lines += line(R.string.diag_next_scan, formatTime(it)) }
         if (status.phase != RendezvousEngine.Phase.STOPPED &&
             status.phase != RendezvousEngine.Phase.FOREGROUND
         ) {
-            lines += Line("Timing", if (status.preciseTiming) "Precise" else "Approximate")
+            lines += line(
+                R.string.diag_timing,
+                text(if (status.preciseTiming) R.string.diag_precise else R.string.diag_approximate)
+            )
         }
         status.lastWindowSawPeer?.let {
-            lines += Line("Last scan", if (it) "Peer seen" else "No one")
+            lines += line(R.string.diag_last_scan, text(if (it) R.string.diag_peer_seen else R.string.diag_no_one))
         }
-        if (status.windowsCompleted > 0) lines += Line("Scans done", status.windowsCompleted.toString())
-        lines += Line("Clock offset", formatOffset(clockOffsetMs))
+        if (status.windowsCompleted > 0) {
+            lines += line(R.string.diag_scans_done, String.format(Locale.getDefault(), "%d", status.windowsCompleted))
+        }
+        lines += line(R.string.diag_clock_offset, formatOffset(clockOffsetMs))
         return lines
     }
 
-    private fun scanLabel(status: RendezvousEngine.Status): String = when (status.phase) {
-        RendezvousEngine.Phase.STOPPED -> "Bluetooth off"
-        RendezvousEngine.Phase.FOREGROUND -> "Active, app open"
-        RendezvousEngine.Phase.WINDOW_OPEN -> "Scanning now"
+    private fun scanLabel(status: RendezvousEngine.Status): Int = when (status.phase) {
+        RendezvousEngine.Phase.STOPPED -> R.string.diag_bluetooth_off
+        RendezvousEngine.Phase.FOREGROUND -> R.string.diag_active_app_open
+        RendezvousEngine.Phase.WINDOW_OPEN -> R.string.diag_scanning_now
         RendezvousEngine.Phase.WAITING ->
-            if (status.mode == RendezvousSchedule.Mode.RECOVERY) "Searching" else "Synced"
+            if (status.mode == RendezvousSchedule.Mode.RECOVERY) R.string.diag_searching else R.string.diag_synced
     }
 
     fun formatOffset(offsetMs: Long): String {
@@ -106,7 +116,7 @@ fun ScalingLazyListScope.linkStatusSection(mesh: WearMeshService?) {
     item(key = "link-status-header") {
         ListHeader {
             Text(
-                text = "Link",
+                text = stringResource(R.string.diag_link),
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold
             )
@@ -122,7 +132,8 @@ private fun LinkStatusRows(mesh: WearMeshService) {
     val palette = LocalBitchatPalette.current
     val context = LocalContext.current
     val timeFormat = androidx.compose.runtime.remember { SimpleDateFormat("HH:mm:ss", Locale.US) }
-    val lines = LinkDiagnostics.lines(mode, status, mesh.meshClock.offsetMs) {
+    val resources = context.resources
+    val lines = LinkDiagnostics.lines(mode, status, mesh.meshClock.offsetMs, resources::getString) {
         timeFormat.format(Date(it))
     }
 
@@ -153,7 +164,7 @@ private fun LinkStatusRows(mesh: WearMeshService) {
             }
             Text(
                 // Some watches ship no screen for this; say so instead of failing silently.
-                text = if (unavailable) "Precise timing not offered on this watch" else "Allow precise timing",
+                text = stringResource(if (unavailable) R.string.diag_precise_unavailable else R.string.diag_allow_precise),
                 style = MaterialTheme.typography.bodySmall,
                 color = if (unavailable) palette.textTertiary else MaterialTheme.colorScheme.primary,
                 textAlign = TextAlign.Center,

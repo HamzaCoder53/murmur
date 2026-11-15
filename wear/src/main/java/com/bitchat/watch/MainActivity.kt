@@ -1,5 +1,7 @@
 package com.bitchat.watch
 
+import com.bitchat.watch.R
+import androidx.compose.ui.res.stringResource
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
@@ -590,9 +592,9 @@ private fun WearScreenContent(
             val mesh = WearMeshService.peek()
             NicknameSetupScreen(
                 initialNickname = mesh?.nickname ?: "",
-                title = "Nickname",
-                subtitle = "Seen by peers",
-                confirmLabel = "Save",
+                title = stringResource(R.string.nickname_title),
+                subtitle = stringResource(R.string.nickname_subtitle),
+                confirmLabel = stringResource(R.string.action_save),
                 autoFocus = active,
                 onConfirm = { name ->
                     mesh?.setNickname(name)
@@ -680,7 +682,7 @@ fun NotificationPermissionScreen(onResult: (Boolean) -> Unit, onSkip: () -> Unit
                     }
                 )
             },
-            title = { Text("DM alerts") },
+            title = { Text(stringResource(R.string.dm_alerts_title)) },
             dismissButton = { AlertDialogDefaults.DismissButton(onClick = onSkip) },
             icon = {
                 Icon(
@@ -689,7 +691,7 @@ fun NotificationPermissionScreen(onResult: (Boolean) -> Unit, onSkip: () -> Unit
                     tint = MaterialTheme.colorScheme.primary,
                 )
             },
-            text = { Text("Know when someone writes") },
+            text = { Text(stringResource(R.string.dm_alerts_text)) },
         )
     }
 }
@@ -701,17 +703,20 @@ fun PermissionRequestScreen(onGranted: () -> Unit) {
             onGranted()
         }
 
+    val allowLabel = stringResource(R.string.action_allow)
+    val welcomeTitle = stringResource(R.string.app_name)
+    val welcomeBody = stringResource(R.string.welcome_body)
     WearFormScreen(
         edgeButton = {
             FormEdgeButton(
-                label = "Allow",
+                label = allowLabel,
                 onClick = { launcher.launch(MainActivity.requiredPermissions().toTypedArray()) }
             )
         }
     ) {
         formHeader(
-            title = "Skein",
-            body = "Mesh chat over Bluetooth",
+            title = welcomeTitle,
+            body = welcomeBody,
             icon = Icons.Filled.Bluetooth,
         )
     }
@@ -724,18 +729,21 @@ fun BluetoothEnableScreen(onEnabled: () -> Unit) {
             onEnabled()
         }
     val warning = LocalBitchatPalette.current.accentOrange
+    val turnOnLabel = stringResource(R.string.action_turn_on)
+    val offTitle = stringResource(R.string.bluetooth_off_title)
+    val offBody = stringResource(R.string.bluetooth_off_body)
 
     WearFormScreen(
         edgeButton = {
             FormEdgeButton(
-                label = "Turn on",
+                label = turnOnLabel,
                 onClick = { launcher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)) }
             )
         }
     ) {
         formHeader(
-            title = "Bluetooth off",
-            body = "Needed to mesh",
+            title = offTitle,
+            body = offBody,
             icon = Icons.Filled.BluetoothDisabled,
             iconTint = warning,
         )

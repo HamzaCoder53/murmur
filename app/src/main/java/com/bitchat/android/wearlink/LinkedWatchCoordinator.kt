@@ -61,6 +61,8 @@ class LinkedWatchCoordinator(
         const val ACTION_APPROVE = "xfuturehb.murmur.WATCH_LINK_APPROVE"
         const val ACTION_DENY = "xfuturehb.murmur.WATCH_LINK_DENY"
         const val EXTRA_NODE = "node"
+        private const val LANGUAGE_POLL_MS = 3_000L
+        private const val LANGUAGE_RESEND_MS = 10 * 60_000L
 
         /** Set while the phone's watch link is running, for the approval receiver. */
         @Volatile
@@ -148,7 +150,7 @@ class LinkedWatchCoordinator(
             manager.createNotificationChannel(
                 NotificationChannel(
                     NOTIFICATION_CHANNEL,
-                    "Watch linking",
+                    appContext.getString(R.string.watch_link_channel),
                     android.app.NotificationManager.IMPORTANCE_HIGH
                 )
             )
@@ -161,22 +163,18 @@ class LinkedWatchCoordinator(
                 .putExtra(EXTRA_NODE, nodeId),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val name = watchName.ifBlank { "Your watch" }.take(40)
+        val name = watchName.ifBlank { appContext.getString(R.string.watch_link_default_name) }.take(40)
         val notification = NotificationCompat.Builder(appContext, NOTIFICATION_CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Link $name?")
-            .setContentText("It will use this phone's Skein identity and see your chats.")
+            .setContentTitle(appContext.getString(R.string.watch_link_title, name))
+            .setContentText(appContext.getString(R.string.watch_link_text))
             .setStyle(
-                NotificationCompat.BigTextStyle().bigText(
-                    "$name wants to use this phone's Skein identity. It will be able to read " +
-                        "and send your messages, including when away from the phone. Only allow " +
-                        "this for your own watch."
-                )
+                NotificationCompat.BigTextStyle().bigText(appContext.getString(R.string.watch_link_big_text, name))
             )
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
-            .addAction(0, "Deny", action(ACTION_DENY, 1))
-            .addAction(0, "Allow", action(ACTION_APPROVE, 2))
+            .addAction(0, appContext.getString(R.string.watch_link_deny), action(ACTION_DENY, 1))
+            .addAction(0, appContext.getString(R.string.watch_link_allow), action(ACTION_APPROVE, 2))
             .build()
         val allowed = Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(appContext, Manifest.permission.POST_NOTIFICATIONS) ==
@@ -227,10 +225,33 @@ class LinkedWatchCoordinator(
                 .debounce(400)
                 .collect { pushSnapshot(reachableLinkedNodes()) }
         }
+        // The watch app follows the phone app's language, linked or not.
+        launch { languageLoop() }
         // Sessions and connection state change without touching those flows.
         while (true) {
             delay(REFRESH_MS)
             pushSnapshot(reachableLinkedNodes())
+        }
+    }
+
+    private suspend fun languageLoop() {
+        var sent = emptyMap<String, String>()
+        var lastResendMs = 0L
+        while (true) {
+            val tag = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().toLanguageTags()
+            val nodes = channel.reachableNodes.value
+            val now = System.currentTimeMillis()
+            // Sends are fire-and-forget, so repeat now and then in case one was lost.
+            if (now - lastResendMs > LANGUAGE_RESEND_MS) {
+                sent = emptyMap()
+                lastResendMs = now
+            }
+            // A node is remembered only once its send was accepted, so failures retry next poll.
+            sent = nodes.filter { node ->
+                sent[node] == tag ||
+                    channel.sendControl(node, WearLinkContract.CTL_LANGUAGE, tag.toByteArray(Charsets.UTF_8))
+            }.associateWith { tag }
+            delay(LANGUAGE_POLL_MS)
         }
     }
 

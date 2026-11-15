@@ -1,5 +1,6 @@
 package com.bitchat.watch.glance
 
+import com.bitchat.watch.R
 import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
@@ -41,26 +42,28 @@ import kotlinx.coroutines.launch
 /** What the tile and complication show, read from the running app. */
 data class GlanceState(val unread: Int, val nearby: Int, val link: String) {
     companion object {
-        fun current(): GlanceState {
+        fun current(context: Context): GlanceState {
+            val res = context.resources
             val mesh = WearMeshService.peek()
             val me = mesh?.myPeerID
             return GlanceState(
                 unread = WearChatState.unreadDms.value.values.sum(),
                 nearby = AppStateStore.peers.value.count { it != me },
                 link = when {
-                    mesh == null || !mesh.isRunning() -> "Off"
-                    mesh.linkMode.value == LinkMode.TETHERED -> "Phone"
-                    else -> "Own radio"
+                    mesh == null || !mesh.isRunning() -> res.getString(R.string.glance_off)
+                    mesh.linkMode.value == LinkMode.TETHERED -> res.getString(R.string.diag_phone)
+                    else -> res.getString(R.string.diag_own_radio)
                 }
             )
         }
     }
 
-    val unreadLabel: String get() = when (unread) {
-        0 -> "No new messages"
-        1 -> "1 new message"
-        else -> "${if (unread > 99) "99+" else unread} new messages"
-    }
+    val countText: String get() = if (unread > 99) "99+" else String.format(java.util.Locale.getDefault(), "%d", unread)
+
+    fun unreadLabel(context: Context): String =
+        if (unread == 0) context.getString(R.string.glance_no_new)
+        else context.resources.getQuantityString(R.plurals.glance_new_messages, unread, unread)
+            .let { if (unread > 99) it.replace(String.format(java.util.Locale.getDefault(), "%d", unread), "99+") else it }
 }
 
 private fun openAppIntent(context: Context): PendingIntent = PendingIntent.getActivity(
@@ -80,7 +83,7 @@ class MurmurTileService : TileService() {
 
     override fun onTileRequest(requestParams: RequestBuilders.TileRequest): ListenableFuture<TileBuilders.Tile> =
         CallbackToFutureAdapter.getFuture { completer ->
-            val state = GlanceState.current()
+            val state = GlanceState.current(this)
             completer.set(
                 TileBuilders.Tile.Builder()
                     .setResourcesVersion(RESOURCES_VERSION)
@@ -133,12 +136,12 @@ class MurmurTileService : TileService() {
             .build()
         val column = LayoutElementBuilders.Column.Builder()
             .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
-            .addContent(text("Skein", 14f, GREEN, bold = true))
+            .addContent(text(getString(R.string.app_name), 14f, GREEN, bold = true))
             .addContent(spacer(6f))
-            .addContent(text(if (state.unread > 99) "99+" else state.unread.toString(), 40f, WHITE, bold = true))
-            .addContent(text(if (state.unread == 1) "new message" else "new messages", 13f, GREY))
+            .addContent(text(state.countText, 40f, WHITE, bold = true))
+            .addContent(text(resources.getQuantityString(R.plurals.glance_new_messages_word, state.unread), 13f, GREY))
             .addContent(spacer(8f))
-            .addContent(text("${state.nearby} nearby · ${state.link}", 13f, GREY))
+            .addContent(text(getString(R.string.glance_nearby, state.nearby, state.link), 13f, GREY))
             .build()
         return LayoutElementBuilders.Box.Builder()
             .setWidth(expand())
@@ -152,17 +155,17 @@ class MurmurTileService : TileService() {
 /** Watch-face complication: number of unread private messages. */
 class MurmurComplicationService : SuspendingComplicationDataSourceService() {
     override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData? =
-        if (request.complicationType == ComplicationType.SHORT_TEXT) build(GlanceState.current()) else null
+        if (request.complicationType == ComplicationType.SHORT_TEXT) build(GlanceState.current(this)) else null
 
     override fun getPreviewData(type: ComplicationType): ComplicationData? =
-        if (type == ComplicationType.SHORT_TEXT) build(GlanceState(unread = 2, nearby = 3, link = "Phone")) else null
+        if (type == ComplicationType.SHORT_TEXT) build(GlanceState(unread = 2, nearby = 3, link = getString(R.string.diag_phone))) else null
 
     private fun build(state: GlanceState): ComplicationData =
         ShortTextComplicationData.Builder(
-            text = PlainComplicationText.Builder(if (state.unread > 99) "99+" else state.unread.toString()).build(),
-            contentDescription = PlainComplicationText.Builder("Skein: ${state.unreadLabel}").build()
+            text = PlainComplicationText.Builder(state.countText).build(),
+            contentDescription = PlainComplicationText.Builder("${getString(R.string.app_name)}: ${state.unreadLabel(this)}").build()
         )
-            .setTitle(PlainComplicationText.Builder("Skein").build())
+            .setTitle(PlainComplicationText.Builder(getString(R.string.app_name)).build())
             .setTapAction(openAppIntent(this))
             .build()
 }
@@ -176,7 +179,7 @@ object GlanceUpdater {
         if (job != null) return
         val app = context.applicationContext
         job = scope.launch {
-            combine(WearChatState.unreadDms, AppStateStore.peers, mesh.linkMode) { _, _, _ -> GlanceState.current() }
+            combine(WearChatState.unreadDms, AppStateStore.peers, mesh.linkMode) { _, _, _ -> GlanceState.current(app) }
                 .distinctUntilChanged()
                 .debounce(1_500)
                 .collect { push(app) }

@@ -16,4 +16,205 @@
         <item quantity="one">%1$d new message</item>
         <item quantity="other">%1$d new messages</item>
     </plurals>
+    <!-- Menu -->
+    <string name="menu_live_talk">Live talk</string>
+    <string name="menu_live_talk_detail">Real-time</string>
+    <string name="menu_save_history">Save history</string>
+    <string name="menu_save_history_detail">Private chats</string>
+    <string name="menu_location_chat">Location chat</string>
+    <string name="menu_location_chat_detail">Chat in your area</string>
+    <string name="menu_help">How it works</string>
+    <string name="menu_help_detail">Guide</string>
+    <string name="menu_quit">Quit</string>
+    <string name="menu_quit_detail">Ends mesh</string>
+    <string name="mesh_status_scanning">Mesh on · scanning</string>
+    <plurals name="mesh_status_peers">
+        <item quantity="one">Mesh on · %d peer</item>
+        <item quantity="other">Mesh on · %d peers</item>
+    </plurals>
+    <string name="dialog_link_title">Link to phone?</string>
+    <string name="dialog_link_text">Uses your phone\'s identity, so messages reach both. This watch\'s identity and saved chats are erased.</string>
+    <string name="dialog_unlink_title">Unlink phone?</string>
+    <string name="dialog_unlink_text">This watch gets a new identity of its own. Its saved chats are erased.</string>
+    <string name="dialog_erase_title">Erase saved chats?</string>
+    <string name="dialog_erase_text">Stops saving and erases private chats saved on this watch.</string>
+    <string name="dialog_quit_title">Quit Skein?</string>
+    <string name="link_button_link">Link to phone</string>
+    <string name="link_button_unlink">Unlink phone</string>
+    <string name="link_state_not_linked">Share phone\'s identity</string>
+    <string name="link_state_no_phone">Open Skein on phone</string>
+    <string name="link_state_requesting">Confirm on phone</string>
+    <string name="link_state_denied">Not allowed on phone</string>
+    <string name="link_state_linked">Same identity as phone</string>
+    <string name="link_state_restarting">Restarting Skein</string>
+    <string name="internet_dms">Internet DMs</string>
+    <string name="internet_mode_off">Off</string>
+    <string name="internet_mode_5">Every 5 min</string>
+    <string name="internet_mode_1">Every 1 min</string>
+    <string name="internet_mode_always">Always on</string>
+    <string name="internet_check_now">Check now</string>
+    <string name="internet_phone_checks">Phone checks for you</string>
+    <string name="internet_checking">Checking…</string>
+    <plurals name="internet_live_relays">
+        <item quantity="one">Live · %d relay</item>
+        <item quantity="other">Live · %d relays</item>
+    </plurals>
+    <string name="internet_checked_at">Checked %1$s</string>
+    <string name="internet_not_checked">Not checked yet</string>
+    <string name="internet_error_identity">No internet identity</string>
+    <string name="internet_error_connection">No internet connection</string>
+    <string name="internet_error_relays">Relays unreachable</string>
+
+    <!-- Setup and permissions -->
+    <string name="nickname_title">Nickname</string>
+    <string name="nickname_subtitle">Seen by peers</string>
+    <string name="nickname_pick">Pick a nickname</string>
+    <string name="action_save">Save</string>
+    <string name="action_join">Join</string>
+    <string name="action_allow">Allow</string>
+    <string name="action_turn_on">Turn on</string>
+    <string name="dm_alerts_title">DM alerts</string>
+    <string name="dm_alerts_text">Know when someone writes</string>
+    <string name="welcome_body">Mesh chat over Bluetooth</string>
+    <string name="bluetooth_off_title">Bluetooth off</string>
+    <string name="bluetooth_off_body">Needed to mesh</string>
+
+    <!-- Chat -->
+    <string name="chat_empty">No messages yet\nSay hi to the mesh</string>
+    <string name="chat_open_people">Open people</string>
+    <string name="sender_you">you</string>
+    <plurals name="unread_messages">
+        <item quantity="one">%d unread message</item>
+        <item quantity="other">%d unread messages</item>
+    </plurals>
+    <string name="action_type_message">Type message</string>
+    <string name="action_hold_to_talk">Hold to talk</string>
+    <string name="action_cancel_recording">Cancel recording</string>
+    <string name="voice_live">LIVE</string>
+    <string name="voice_lift_to_cancel">Lift to cancel</string>
+    <string name="voice_lift_to_send">Lift to send</string>
+    <string name="voice_slide_to_cancel">Slide up to cancel</string>
+    <string name="input_to">To %1$s</string>
+    <string name="input_to_mesh">To #mesh</string>
+    <string name="input_hint">Message</string>
+    <string name="cd_dictate">Dictate</string>
+    <string name="cd_send">Send</string>
+    <string name="cd_image">Image</string>
+    <string name="cd_close">Close</string>
+    <string name="cd_play">Play</string>
+    <string name="cd_pause">Pause</string>
+    <string name="cd_favorite">Favorite</string>
+    <string name="cd_verified">Verified</string>
+    <string name="lock_handshaking">handshake in progress</string>
+    <string name="lock_encrypted">encrypted</string>
+    <string name="lock_idle">not encrypted yet</string>
+    <string name="dm_empty_encrypted">Encrypted\nSay hi</string>
+    <string name="dm_securing">Securing…</string>
+    <string name="dm_open_details">Open user details</string>
+
+    <!-- People and identity -->
+    <string name="people_title">People</string>
+    <string name="people_empty">No one nearby yet\nScanning…</string>
+    <string name="people_you_rename">You · rename</string>
+    <string name="people_me">me</string>
+    <string name="debug_peers">Peers (%1$d)</string>
+    <string name="debug_scanning">Scanning for nearby devices…</string>
+    <string name="user_favorite">Favorite</string>
+    <string name="user_favorited">Favorited</string>
+    <string name="user_compare_codes">Compare codes</string>
+    <string name="user_verify">Verify</string>
+    <string name="user_verified">Verified</string>
+    <string name="user_mutual">Mutual</string>
+    <string name="user_favors_you">Favors you</string>
+    <string name="verify_unverify">Unverify</string>
+    <string name="verify_unverified">Unverified</string>
+    <string name="verify_match_in_person">Match codes in person</string>
+    <string name="verify_theirs">Theirs</string>
+    <string name="verify_yours">Yours</string>
+    <string name="verify_pending">Pending…</string>
+
+    <!-- Link status -->
+    <string name="diag_link">Link</string>
+    <string name="diag_phone">Phone</string>
+    <string name="diag_own_radio">Own radio</string>
+    <string name="diag_scan">Scan</string>
+    <string name="diag_scan_off">Off, phone relays</string>
+    <string name="diag_next_scan">Next scan</string>
+    <string name="diag_timing">Timing</string>
+    <string name="diag_precise">Precise</string>
+    <string name="diag_approximate">Approximate</string>
+    <string name="diag_last_scan">Last scan</string>
+    <string name="diag_peer_seen">Peer seen</string>
+    <string name="diag_no_one">No one</string>
+    <string name="diag_scans_done">Scans done</string>
+    <string name="diag_clock_offset">Clock offset</string>
+    <string name="diag_bluetooth_off">Bluetooth off</string>
+    <string name="diag_active_app_open">Active, app open</string>
+    <string name="diag_scanning_now">Scanning now</string>
+    <string name="diag_searching">Searching</string>
+    <string name="diag_synced">Synced</string>
+    <string name="diag_allow_precise">Allow precise timing</string>
+    <string name="diag_precise_unavailable">Precise timing not offered on this watch</string>
+
+    <!-- Tile and complication -->
+    <string name="glance_off">Off</string>
+    <string name="glance_no_new">No new messages</string>
+    <plurals name="glance_new_messages">
+        <item quantity="one">%d new message</item>
+        <item quantity="other">%d new messages</item>
+    </plurals>
+    <plurals name="glance_new_messages_word">
+        <item quantity="one">new message</item>
+        <item quantity="other">new messages</item>
+    </plurals>
+    <string name="glance_nearby">%1$d nearby · %2$s</string>
+    <string name="complication_name">Skein messages</string>
+
+    <!-- Location chat -->
+    <string name="loc_title">Location channels</string>
+    <string name="loc_intro">Public chat with people in your area. Only the approximate area is shared, never your exact location.</string>
+    <string name="loc_allow">Allow location</string>
+    <string name="loc_finding">Finding your area…</string>
+    <string name="loc_unavailable">Location unavailable</string>
+    <string name="loc_try_again">Try again</string>
+    <string name="loc_live">#%1$s · live</string>
+    <string name="loc_connecting">#%1$s · connecting…</string>
+    <string name="loc_empty">No messages in the last hour</string>
+    <string name="loc_not_sent">Not sent</string>
+    <string name="loc_write">Write</string>
+    <string name="area_block">Block</string>
+    <string name="area_neighborhood">Neighborhood</string>
+    <string name="area_city">City</string>
+    <string name="area_province">Province</string>
+    <string name="area_region">Region</string>
+    <string name="area_generic">Area</string>
+
+    <!-- How it works -->
+    <string name="help_title">How it works</string>
+    <string name="help_nearby_title">Chat nearby</string>
+    <string name="help_nearby_body">No account or phone number. Messages go phone to phone and watch to watch over Bluetooth, hopping through up to 7 devices. Works with Bitchat users too.</string>
+    <string name="help_public_title">Public and private</string>
+    <string name="help_public_body">The main chat is public to everyone nearby. Tap a name to message privately: private chats are encrypted end to end.</string>
+    <string name="help_phone_title">With your phone</string>
+    <string name="help_phone_body">With Skein open on your phone, the watch turns its own radio off and sends through the phone. People → Link shows Phone.</string>
+    <string name="help_link_title">Link to phone</string>
+    <string name="help_link_body">Menu → Link to phone gives the watch your phone\'s identity: one inbox on both, same name, photos and read status in sync. Confirm on the phone.</string>
+    <string name="help_alone_title">On its own</string>
+    <string name="help_alone_body">Away from the phone the watch uses its own Bluetooth, scanning briefly each minute to save battery. People → Link shows Own radio.</string>
+    <string name="help_favorites_title">Favorites</string>
+    <string name="help_favorites_body">In a chat, tap the name at the top, then Favorite. When you both favorite each other (Mutual) you can message over the internet when far apart.</string>
+    <string name="help_internet_title">Internet messages</string>
+    <string name="help_internet_body">For mutual favorites out of Bluetooth range, messages go over the internet through public Nostr relays. They are encrypted: relays can\'t read them.</string>
+    <string name="help_frequency_title">How often</string>
+    <string name="help_frequency_body">Menu → Internet DMs: Off, every 5 min, every 1 min or Always on. Always on is fastest and uses the most battery. Check now fetches at once.</string>
+    <string name="help_location_title">Location chat</string>
+    <string name="help_location_body">Menu → Location chat: public chat with people in your block, neighborhood or city, over the internet. Only the approximate area is shared.</string>
+    <string name="help_tile_title">Tile</string>
+    <string name="help_tile_body">Swipe left on the watch face, tap +, choose Skein: new messages, people nearby and Phone or Own radio at a glance.</string>
+    <string name="help_complication_title">Complication</string>
+    <string name="help_complication_body">Long-press the watch face → Edit → Complications → Skein messages for an unread count on your watch face.</string>
+    <string name="help_privacy_title">Privacy</string>
+    <string name="help_privacy_body">Nothing is stored on a server. Menu → Save history keeps private chats on this watch only; turn it off to erase them.</string>
+    <string name="help_language_title">Language</string>
+    <string name="help_language_body">The watch uses the same language as Skein on your phone. Change it in the phone app\'s settings.</string>
 </resources>

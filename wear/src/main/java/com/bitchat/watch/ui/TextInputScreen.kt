@@ -1,5 +1,7 @@
 package com.bitchat.watch.ui
 
+import com.bitchat.watch.R
+import androidx.compose.ui.res.stringResource
 import android.app.Activity
 import android.content.Intent
 import android.speech.RecognizerIntent
@@ -113,7 +115,7 @@ fun TextInputScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = recipient?.let { "To $it" } ?: "To #mesh",
+            text = recipient?.let { stringResource(R.string.input_to, it) } ?: stringResource(R.string.input_to_mesh),
             style = ChatVisualTokens.SystemActionStyle,
             color = palette.textTertiary,
             textAlign = TextAlign.Center,
@@ -143,7 +145,7 @@ fun TextInputScreen(
                     Box {
                         if (text.isEmpty()) {
                             Text(
-                                text = "Message",
+                                text = stringResource(R.string.input_hint),
                                 style = ChatVisualTokens.MessageBodyStyle,
                                 color = palette.textTertiary
                             )
@@ -176,7 +178,7 @@ fun TextInputScreen(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Mic,
-                    contentDescription = "Dictate",
+                    contentDescription = stringResource(R.string.cd_dictate),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(ActionIconSize)
                 )
@@ -188,7 +190,7 @@ fun TextInputScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send",
+                    contentDescription = stringResource(R.string.cd_send),
                     tint = sendIcon,
                     modifier = Modifier.size(ActionIconSize)
                 )

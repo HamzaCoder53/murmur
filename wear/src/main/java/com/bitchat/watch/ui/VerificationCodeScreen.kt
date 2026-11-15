@@ -1,5 +1,7 @@
 package com.bitchat.watch.ui
 
+import com.bitchat.watch.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,7 +53,7 @@ fun VerificationCodeScreen(peerID: String) {
         scrollState = listState,
         edgeButton = {
             FormEdgeButton(
-                label = if (identity.isVerified) "Unverify" else "Verify",
+                label = stringResource(if (identity.isVerified) R.string.verify_unverify else R.string.user_verify),
                 enabled = identity.fingerprint != null,
                 onClick = {
                     WearPeerIdentityState.setVerified(
@@ -89,7 +91,7 @@ fun VerificationCodeScreen(peerID: String) {
                             tint = statusColor
                         )
                         Text(
-                            text = if (identity.isVerified) "Verified" else "Unverified",
+                            text = stringResource(if (identity.isVerified) R.string.user_verified else R.string.verify_unverified),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = statusColor
@@ -100,7 +102,7 @@ fun VerificationCodeScreen(peerID: String) {
 
             item {
                 Text(
-                    text = "Match codes in person",
+                    text = stringResource(R.string.verify_match_in_person),
                     style = ChatVisualTokens.SystemActionStyle,
                     color = palette.textTertiary,
                     textAlign = TextAlign.Center,
@@ -112,14 +114,14 @@ fun VerificationCodeScreen(peerID: String) {
 
             item {
                 FingerprintCard(
-                    title = "Theirs",
+                    title = stringResource(R.string.verify_theirs),
                     fingerprint = identity.fingerprint
                 )
             }
 
             item {
                 FingerprintCard(
-                    title = "Yours",
+                    title = stringResource(R.string.verify_yours),
                     fingerprint = myFingerprint
                 )
             }
@@ -148,7 +150,7 @@ private fun FingerprintCard(
             fontWeight = FontWeight.Bold
         )
         Text(
-            text = fingerprint?.let(::formatVerificationCode) ?: "Pending…",
+            text = fingerprint?.let(::formatVerificationCode) ?: stringResource(R.string.verify_pending),
             style = MaterialTheme.typography.bodySmall.copy(
                 fontFamily = BitchatFontFamily,
                 fontSize = 12.sp,

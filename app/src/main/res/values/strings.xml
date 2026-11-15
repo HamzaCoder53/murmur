@@ -675,4 +675,11 @@
     <string name="cd_show_whole_globe">Show the whole globe</string>
     <string name="cd_globe_activity">%1$d active chats, %2$d people online</string>
     <string name="cd_channel_activity">%1$d people, %2$d messages in the last hour</string>
+  <string name="watch_link_channel">Watch linking</string>
+  <string name="watch_link_default_name">Your watch</string>
+  <string name="watch_link_title">Link %1$s?</string>
+  <string name="watch_link_text">It will use this phone\'s Skein identity and see your chats.</string>
+  <string name="watch_link_big_text">%1$s wants to use this phone\'s Skein identity. It will be able to read and send your messages, including when away from the phone. Only allow this for your own watch.</string>
+  <string name="watch_link_deny">Deny</string>
+  <string name="watch_link_allow">Allow</string>
 </resources>

@@ -1,5 +1,7 @@
 package com.bitchat.watch.ui
 
+import com.bitchat.watch.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -64,9 +66,9 @@ fun NoiseLockIcon(
         imageVector = if (state == NoiseSessionUiState.Established) Icons.Filled.Lock
         else Icons.Filled.LockOpen,
         contentDescription = when (state) {
-            NoiseSessionUiState.Handshaking -> "handshake in progress"
-            NoiseSessionUiState.Established -> "encrypted"
-            NoiseSessionUiState.Idle -> "not encrypted yet"
+            NoiseSessionUiState.Handshaking -> stringResource(R.string.lock_handshaking)
+            NoiseSessionUiState.Established -> stringResource(R.string.lock_encrypted)
+            NoiseSessionUiState.Idle -> stringResource(R.string.lock_idle)
         },
         tint = tint,
         modifier = modifier
