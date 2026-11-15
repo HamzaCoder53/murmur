@@ -206,7 +206,7 @@
     <string name="help_internet_title">Internet messages</string>
     <string name="help_internet_body">For mutual favorites out of Bluetooth range, messages go over the internet through public Nostr relays. They are encrypted: relays can\'t read them.</string>
     <string name="help_frequency_title">How often</string>
-    <string name="help_frequency_body">Menu → Internet DMs: Off, every 5 min, every 1 min or Always on. Always on is fastest and uses the most battery. Check now fetches at once.</string>
+    <string name="help_frequency_body">Menu → Internet DMs: Off, 5 min, 1 min or Always on. While you chat and on the charger it stays connected, and it checks when you wake the watch.</string>
     <string name="help_location_title">Location chat</string>
     <string name="help_location_body">Menu → Location chat: public chat with people in your block, neighborhood or city, over the internet. Only the approximate area is shared.</string>
     <string name="help_tile_title">Tile</string>

@@ -178,6 +178,8 @@ class MainActivity : ComponentActivity() {
         com.bitchat.android.features.voice.LiveVoiceManager.getInstance(applicationContext)
             .setAppForeground(true)
         WearChatState.setAppInForeground(true)
+        // Opening the app is a good moment to look for internet messages.
+        com.bitchat.watch.mesh.WearMeshService.peek()?.internet?.onWatchAwake("app")
         WearChatState.openDmPeer?.let { peerID ->
             WearChatState.openDm(peerID)
             WearNotificationCoordinator.getInstance(applicationContext).clearConversation(peerID)

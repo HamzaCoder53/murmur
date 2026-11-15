@@ -236,7 +236,7 @@
     <string name="help_internet_title">الرسائل عبر الإنترنت</string>
     <string name="help_internet_body">للمفضلين المتبادلين خارج نطاق البلوتوث، تنتقل الرسائل عبر الإنترنت من خلال خوادم Nostr العامة. وهي مشفّرة فلا تستطيع الخوادم قراءتها.</string>
     <string name="help_frequency_title">عدد مرات التحقق</string>
-    <string name="help_frequency_body">القائمة ← رسائل عبر الإنترنت: متوقفة، أو كل 5 دقائق، أو كل دقيقة، أو دائمًا. «دائمًا» أسرع لكنه يستهلك البطارية أكثر. «تحقّق الآن» يجلب فورًا.</string>
+    <string name="help_frequency_body">القائمة ← رسائل عبر الإنترنت: متوقفة، أو كل 5 دقائق، أو كل دقيقة، أو دائمًا. يبقى متصلًا أثناء المحادثة وعند الشحن، ويتحقق عندما توقظ الساعة.</string>
     <string name="help_location_title">دردشة المنطقة</string>
     <string name="help_location_body">القائمة ← دردشة المنطقة: دردشة عامة مع من في حيّك أو مدينتك عبر الإنترنت. تُشارَك المنطقة التقريبية فقط.</string>
     <string name="help_tile_title">البطاقة</string>

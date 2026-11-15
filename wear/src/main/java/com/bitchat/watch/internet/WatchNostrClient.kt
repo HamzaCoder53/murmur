@@ -99,6 +99,7 @@ class WatchNostrClient(
         private const val PREFS = "murmur_internet"
         private const val KEY_MODE = "mode"
         private const val KEY_SEEN = "seen_event_ids"
+        private const val KEY_LAST_ACTIVITY = "last_activity_ms"
         private const val SEEN_PERSISTED = 500
         val DEFAULT_MODE = Mode.EVERY_5_MIN
 
@@ -157,6 +158,29 @@ class WatchNostrClient(
     private var liveJob: Job? = null
     private var liveNetworkCallback: ConnectivityManager.NetworkCallback? = null
 
+    /** Last private message sent or received over the internet (drives [CheckPolicy]). */
+    @Volatile
+    private var lastActivityMs: Long? = prefs.getLong(KEY_LAST_ACTIVITY, 0L).takeIf { it > 0 }
+
+    @Volatile
+    private var charging = false
+
+    /** Ends a conversation burst: back from a live connection to timed checks. */
+    private var burstEndJob: Job? = null
+    private var defaultNetworkCallback: ConnectivityManager.NetworkCallback? = null
+
+    private val wakeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, intent: Intent) {
+            when (intent.action) {
+                Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> onWatchAwake("screen")
+                Intent.ACTION_POWER_CONNECTED -> setCharging(true)
+                Intent.ACTION_POWER_DISCONNECTED -> setCharging(false)
+            }
+        }
+    }
+
+    private fun plan() = CheckPolicy.plan(_status.value.mode, System.currentTimeMillis(), lastActivityMs, charging)
+
     private val alarmIntent: PendingIntent by lazy {
         PendingIntent.getBroadcast(
             context, REQUEST_CODE,
@@ -173,15 +197,78 @@ class WatchNostrClient(
     fun start() {
         current = this
         running = true
+        charging = runCatching {
+            context.getSystemService(android.os.BatteryManager::class.java).isCharging
+        }.getOrDefault(false)
+        runCatching {
+            androidx.core.content.ContextCompat.registerReceiver(
+                context,
+                wakeReceiver,
+                android.content.IntentFilter().apply {
+                    addAction(Intent.ACTION_SCREEN_ON)
+                    addAction(Intent.ACTION_USER_PRESENT)
+                    addAction(Intent.ACTION_POWER_CONNECTED)
+                    addAction(Intent.ACTION_POWER_DISCONNECTED)
+                },
+                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+        }
+        val networkCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) = onWatchAwake("network")
+        }
+        if (runCatching { connectivity.registerDefaultNetworkCallback(networkCallback) }.isSuccess) {
+            defaultNetworkCallback = networkCallback
+        }
         applyMode()
     }
 
     fun stop() {
         running = false
         if (current === this) current = null
+        runCatching { context.unregisterReceiver(wakeReceiver) }
+        defaultNetworkCallback?.let { runCatching { connectivity.unregisterNetworkCallback(it) } }
+        defaultNetworkCallback = null
+        burstEndJob?.cancel()
+        burstEndJob = null
         stopLive()
         cancelAlarm()
         publishStatus()
+    }
+
+    /**
+     * The watch is awake anyway (screen on, app opened, network back): check now if the last
+     * check was a while ago. Cheap, since the watch is not woken for it.
+     */
+    fun onWatchAwake(reason: String) {
+        if (!active || liveJob != null) return
+        if (!CheckPolicy.opportunistic(_status.value.mode, System.currentTimeMillis(), _status.value.lastCheckMs)) return
+        Log.d(TAG, "Checking while awake ($reason)")
+        scope.launch { fetchOnce() }
+    }
+
+    /** A private message went out or came in over the internet: a conversation may be going. */
+    private fun noteActivity() {
+        val now = System.currentTimeMillis()
+        lastActivityMs = now
+        prefs.edit().putLong(KEY_LAST_ACTIVITY, now).apply()
+        if (!active || _status.value.mode.intervalMs == null) return
+        if (liveJob != null) scheduleBurstEnd() else applyMode(fetchNow = false)
+    }
+
+    private fun setCharging(value: Boolean) {
+        if (charging == value) return
+        charging = value
+        if (active && _status.value.mode.intervalMs != null) applyMode(fetchNow = false)
+    }
+
+    private fun scheduleBurstEnd() {
+        burstEndJob?.cancel()
+        val until = (plan() as? CheckPolicy.Plan.Live)?.untilMs ?: return
+        burstEndJob = scope.launch {
+            delay((until - System.currentTimeMillis()).coerceAtLeast(0))
+            Log.d(TAG, "Conversation quiet: back to timed checks")
+            applyMode(fetchNow = false)
+        }
     }
 
     /** Pause while mirroring a linked phone (the phone fetches for both). */
@@ -199,17 +286,22 @@ class WatchNostrClient(
 
     private val active: Boolean get() = running && !suspended && _status.value.mode != Mode.OFF
 
-    private fun applyMode() {
+    private fun applyMode(fetchNow: Boolean = true) {
         stopLive()
         cancelAlarm()
+        burstEndJob?.cancel()
+        burstEndJob = null
         if (active) {
-            when (_status.value.mode) {
-                Mode.ALWAYS -> startLive()
-                Mode.EVERY_1_MIN, Mode.EVERY_5_MIN -> {
-                    scope.launch { fetchOnce() }
-                    scheduleAlarm()
+            when (val plan = plan()) {
+                is CheckPolicy.Plan.Live -> {
+                    startLive()
+                    if (plan.untilMs != null) scheduleBurstEnd()
                 }
-                Mode.OFF -> Unit
+                is CheckPolicy.Plan.Check -> {
+                    if (fetchNow) scope.launch { fetchOnce() }
+                    scheduleAlarm(plan.delayMs)
+                }
+                CheckPolicy.Plan.Idle -> Unit
             }
         }
         publishStatus()
@@ -221,9 +313,18 @@ class WatchNostrClient(
 
     // --- Periodic checks ---
 
-    private fun scheduleAlarm() {
-        val interval = _status.value.mode.intervalMs ?: return
-        val at = System.currentTimeMillis() + interval
+    /** After a timed check: plan the next one (or go live if a conversation just started). */
+    private fun scheduleNext() {
+        if (!active) return
+        when (val plan = plan()) {
+            is CheckPolicy.Plan.Check -> scheduleAlarm(plan.delayMs)
+            is CheckPolicy.Plan.Live -> applyMode(fetchNow = false)
+            CheckPolicy.Plan.Idle -> Unit
+        }
+    }
+
+    private fun scheduleAlarm(delayMs: Long) {
+        val at = System.currentTimeMillis() + delayMs
         try {
             if (alarmManager.canScheduleExactAlarms()) {
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, alarmIntent)
@@ -249,7 +350,7 @@ class WatchNostrClient(
                 fetchOnce()
             } finally {
                 if (wakeLock.isHeld) wakeLock.release()
-                scheduleAlarm()
+                scheduleNext()
             }
         }
     }
@@ -392,7 +493,7 @@ class WatchNostrClient(
         if (liveJob != null) return
         liveJob = scope.launch {
             var backoffMs = 5_000L
-            while (active && _status.value.mode == Mode.ALWAYS) {
+            while (active && plan() is CheckPolicy.Plan.Live) {
                 val identity = identityProvider()
                 val acquired = if (identity != null) acquireNetwork() else null
                 if (identity == null || acquired == null) {
@@ -517,6 +618,7 @@ class WatchNostrClient(
                                     deliveryStatus = DeliveryStatus.Delivered(myNickname(), Date())
                                 )
                             )
+                            noteActivity()
                         }
                         sendAck(pm.messageID, senderPubkey, identity)
                     }
@@ -589,7 +691,9 @@ class WatchNostrClient(
         }.getOrNull() ?: peerID.takeIf { ContactIdentityResolver.isMeshPeerId(it) } ?: return false
         val embedded = NostrEmbeddedBitChat.encodePMForNostr(content, messageID, recipientPeerID, myPeerID())
             ?: return false
-        return publish(NostrProtocol.createPrivateMessage(embedded, recipientHex, identity))
+        val sent = publish(NostrProtocol.createPrivateMessage(embedded, recipientHex, identity))
+        if (sent) noteActivity()
+        return sent
     }
 
     internal suspend fun publish(events: List<NostrEvent>): Boolean {
