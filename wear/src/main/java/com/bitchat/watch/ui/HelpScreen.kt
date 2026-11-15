@@ -63,6 +63,11 @@ internal object HelpContent {
                 "fastest and uses the most battery. Check now fetches at once."
         ),
         HelpTopic(
+            "Location chat",
+            "Menu → Location chat: public chat with people in your block, neighborhood or city, " +
+                "over the internet. Only the approximate area is shared."
+        ),
+        HelpTopic(
             "Tile",
             "Swipe left on the watch face, tap +, choose Skein: new messages, people nearby " +
                 "and Phone or Own radio at a glance."

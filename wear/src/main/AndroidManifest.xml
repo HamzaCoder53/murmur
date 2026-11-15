@@ -7,9 +7,14 @@
         android:name="android.hardware.bluetooth_le"
         android:required="true" />
 
-    <!-- Bluetooth mesh, a tunnel to the paired phone over the Wearable Data Layer, and private
-         messages over the internet (Nostr relays) when away from the phone. No location. -->
+    <!-- Bluetooth mesh, a tunnel to the paired phone over the Wearable Data Layer, private
+         messages over the internet (Nostr relays), and location channels (approximate area only,
+         taken when that screen is opened). -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Location channels only, while that screen is open: never in the background. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission

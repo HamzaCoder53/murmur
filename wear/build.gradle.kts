@@ -20,8 +20,8 @@ android {
         targetSdk = libs.versions.targetSdk.get().toInt()
         // Wear releases use a separate high range because Play requires every artifact in
         // one application ID to have a unique version code across all form factors.
-        versionCode = 1_000_000_011
-        versionName = "0.4.3"
+        versionCode = 1_000_000_012
+        versionName = "0.5.0"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -122,6 +122,9 @@ val sharedSourceIncludes = listOf(
     "com/bitchat/android/nostr/PoWPreferenceManager.kt",
     "com/bitchat/android/nostr/NostrEmbeddedBitChat.kt",
     "com/bitchat/android/nostr/NostrIdentity.kt",
+    // Location channels: geohash maths and channel levels (pure Kotlin).
+    "com/bitchat/android/geohash/Geohash.kt",
+    "com/bitchat/android/geohash/LocationChannel.kt",
     "com/bitchat/android/nostr/GeohashAliasRegistry.kt",
     "com/bitchat/android/features/file/FileUtils.kt",
     "com/bitchat/android/features/voice/**",
@@ -153,6 +156,12 @@ val sharedSourceExcludes = listOf(
     // wear/src/main (Bluetooth-only check).
     "com/bitchat/android/mesh/BluetoothPermissionManager.kt",
 )
+
+// Location channels pick relays near the area from the same list the phone bundles.
+val syncSharedAppAssets = tasks.register<Sync>("syncSharedAppAssets") {
+    from("../app/src/main/assets") { include("nostr_relays.csv") }
+    into(layout.buildDirectory.dir("sharedAssets"))
+}
 
 val syncSharedAppSources = tasks.register<Sync>("syncSharedAppSources") {
     from("../app/src/main/java") {
@@ -188,6 +197,7 @@ android {
         getByName("main") {
             java.srcDir("build/sharedSrc")
             kotlin.srcDir("build/sharedSrc")
+            assets.srcDir("build/sharedAssets")
         }
         getByName("test") {
             java.srcDir("build/sharedTestSrc")
@@ -198,6 +208,12 @@ android {
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
     dependsOn(syncSharedAppSources)
+}
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
+    dependsOn(syncSharedAppAssets)
+}
+tasks.matching { it.name.contains("Lint", ignoreCase = true) || it.name.startsWith("generate") && it.name.endsWith("Assets") }.configureEach {
+    dependsOn(syncSharedAppAssets)
 }
 tasks.matching { it.name.contains("UnitTest", ignoreCase = true) }.configureEach {
     dependsOn(syncSharedAppTests)
@@ -245,6 +261,9 @@ dependencies {
 
     // Phone-watch tunnel (Wearable Data Layer).
     implementation(libs.gms.wearable)
+
+    // Location channels: one-off location fix (uses the phone's GPS when connected).
+    implementation(libs.gms.location)
 
     // Internet private messages: relay websockets and NIP-44 encryption.
     implementation(libs.okhttp)

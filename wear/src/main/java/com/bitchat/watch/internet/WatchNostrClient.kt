@@ -289,7 +289,7 @@ class WatchNostrClient(
     }
 
     /** Borrow an internet connection and a client bound to it. */
-    private suspend fun lease(): Lease? {
+    internal suspend fun lease(): Lease? {
         leaseProvider?.let { return it() }
         val (network, callback) = acquireNetwork() ?: return null
         val client = clientFor(network)
@@ -441,7 +441,7 @@ class WatchNostrClient(
         liveNetworkCallback = null
     }
 
-    private fun parse(text: String): NostrResponse? = try {
+    internal fun parse(text: String): NostrResponse? = try {
         NostrResponse.fromJsonArray(JsonParser.parseString(text).asJsonArray)
     } catch (_: Exception) {
         null

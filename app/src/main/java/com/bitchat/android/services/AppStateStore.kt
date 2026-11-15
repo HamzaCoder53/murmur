@@ -889,6 +889,18 @@ object AppStateStore {
         }
     }
 
+    /** Update the delivery state of a message already in a channel timeline. */
+    fun updateChannelMessageStatus(channel: String, messageID: String, status: DeliveryStatus) {
+        synchronized(this) {
+            val list = _channelMessages.value[channel] ?: return
+            val index = list.indexOfFirst { it.id == messageID }
+            if (index < 0) return
+            val map = _channelMessages.value.toMutableMap()
+            map[channel] = list.toMutableList().also { it[index] = it[index].copy(deliveryStatus = status) }
+            _channelMessages.value = map
+        }
+    }
+
     private fun appendPublicMessage(messages: List<BitchatMessage>, message: BitchatMessage) =
         buildList(minOf(MAX_PUBLIC_TIMELINE_MESSAGES, messages.size + 1)) {
             val start = (messages.size - MAX_PUBLIC_TIMELINE_MESSAGES + 1).coerceAtLeast(0)

@@ -116,6 +116,14 @@ class WearMeshService private constructor(private val context: Context) {
         onIncomingPrivate = { message -> handleMessageReceived(message) }
     )
 
+    /** Public chat with people in the same area, over the internet (location channels). */
+    val locationChannels = com.bitchat.watch.internet.WatchLocationChannels(
+        context = context,
+        scope = serviceScope,
+        internet = internet,
+        nickname = { nickname }
+    )
+
     /** Message IDs already handed to the internet, so the outbox does not resend them there. */
     private val sentOverInternet = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
     private val linkModeController = LinkModeController(

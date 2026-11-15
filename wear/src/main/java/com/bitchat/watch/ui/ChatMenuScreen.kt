@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Public
@@ -84,7 +85,7 @@ fun ChatHomePager(
  * status, the live push-to-talk switch, and quitting.
  */
 @Composable
-fun ChatMenuScreen(onQuit: () -> Unit, onOpenHelp: () -> Unit = {}) {
+fun ChatMenuScreen(onQuit: () -> Unit, onOpenHelp: () -> Unit = {}, onOpenLocations: () -> Unit = {}) {
     val context = LocalContext.current
     val palette = LocalBitchatPalette.current
     val peers by AppStateStore.peers.collectAsState()
@@ -155,6 +156,16 @@ fun ChatMenuScreen(onQuit: () -> Unit, onOpenHelp: () -> Unit = {}) {
                     },
                 ) {
                     Text("Save history", maxLines = 1)
+                }
+            }
+            item {
+                FilledTonalButton(
+                    onClick = onOpenLocations,
+                    modifier = Modifier.fillMaxWidth(),
+                    icon = { Icon(imageVector = Icons.Filled.LocationOn, contentDescription = null) },
+                    secondaryLabel = { Text("Chat in your area", color = palette.textTertiary, maxLines = 1) },
+                ) {
+                    Text("Location chat", maxLines = 1)
                 }
             }
             item {
