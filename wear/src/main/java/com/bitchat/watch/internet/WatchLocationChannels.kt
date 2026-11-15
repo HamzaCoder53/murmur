@@ -206,9 +206,15 @@ class WatchLocationChannels(
                     )
                 )
                 val closed = CompletableDeferred<Unit>()
-                relaysFor(geohash).forEach { url ->
+                val relays = relaysFor(geohash)
+                // Ends when every socket has ended, not when the first fails while others connect.
+                val ended = java.util.concurrent.atomic.AtomicInteger(0)
+                val opened = java.util.concurrent.atomic.AtomicBoolean(false)
+                if (relays.isEmpty()) closed.complete(Unit)
+                relays.forEach { url ->
                     lease.client.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
                         override fun onOpen(webSocket: WebSocket, response: Response) {
+                            opened.set(true)
                             liveSockets[url] = webSocket
                             _liveRelays.value = liveSockets.size
                             webSocket.send(request)
@@ -226,16 +232,17 @@ class WatchLocationChannels(
                         private fun gone(url: String, socket: WebSocket) {
                             liveSockets.remove(url, socket)
                             _liveRelays.value = liveSockets.size
-                            if (liveSockets.isEmpty()) closed.complete(Unit)
+                            if (ended.incrementAndGet() >= relays.size) closed.complete(Unit)
                         }
                     })
                 }
-                backoff = 5_000L
                 try {
                     closed.await()
                 } finally {
                     lease.release()
                 }
+                // Back off only while no relay could be reached at all.
+                backoff = if (opened.get()) 5_000L else (backoff * 2).coerceAtMost(60_000L)
                 delay(backoff)
             }
         }
@@ -256,7 +263,11 @@ class WatchLocationChannels(
         if (!seen.add(event.id)) return
         scope.launch {
             try {
-                if (!event.isValidSignature()) return@launch
+                if (!event.isValidSignature()) {
+                    // A forged copy must not hide the genuine event when it arrives from another relay.
+                    seen.remove(event.id)
+                    return@launch
+                }
                 val pubkey = event.pubkey.lowercase()
                 val mine = NostrIdentityBridge.deriveIdentity(geohash, context).publicKeyHex
                 if (mine.equals(pubkey, ignoreCase = true)) return@launch

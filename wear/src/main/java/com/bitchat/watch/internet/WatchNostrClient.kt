@@ -1,5 +1,6 @@
 package com.bitchat.watch.internet
 
+import kotlinx.coroutines.joinAll
 import com.bitchat.watch.R
 import android.app.AlarmManager
 import android.app.PendingIntent
@@ -110,6 +111,7 @@ class WatchNostrClient(
         )
 
         private const val FETCH_TIMEOUT_MS = 12_000L
+        private const val HANDLE_TIMEOUT_MS = 8_000L
         private const val PUBLISH_TIMEOUT_MS = 10_000L
         private const val NETWORK_TIMEOUT_MS = 10_000L
         /**
@@ -331,6 +333,8 @@ class WatchNostrClient(
                 val request = NostrRequest.toJson(
                     NostrRequest.Subscribe(subscription, listOf(NostrFilter.giftWrapsFor(identity.publicKeyHex, since)))
                 )
+                // Messages still being decrypted (and acknowledged) when the relays finish.
+                val handling = java.util.concurrent.ConcurrentLinkedQueue<kotlinx.coroutines.Job>()
                 val finished = RELAYS.map { url ->
                     val done = CompletableDeferred<Boolean>()
                     val socket = client.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
@@ -340,13 +344,22 @@ class WatchNostrClient(
 
                         override fun onMessage(webSocket: WebSocket, text: String) {
                             when (val r = parse(text)) {
-                                is NostrResponse.Event -> handleGiftWrap(r.event, identity)
+                                is NostrResponse.Event -> handleGiftWrap(r.event, identity)?.let(handling::add)
                                 is NostrResponse.EndOfStoredEvents -> done.complete(true)
                                 else -> Unit
                             }
                         }
 
                         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                            done.complete(false)
+                        }
+
+                        // A relay that hangs up cleanly before end-of-stored-events is done too.
+                        override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                            done.complete(false)
+                        }
+
+                        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                             done.complete(false)
                         }
                     })
@@ -356,6 +369,8 @@ class WatchNostrClient(
                     finished.count { it.second.await() }
                 } ?: finished.count { it.second.isCompleted && it.second.getCompleted() }
                 finished.forEach { (socket, _) -> socket.close(1000, null) }
+                // Finish handling what arrived before the wake lock and network go away.
+                withTimeoutOrNull(HANDLE_TIMEOUT_MS) { handling.toList().joinAll() }
                 persistSeen()
                 _status.value = _status.value.copy(
                     checking = false,
@@ -390,6 +405,13 @@ class WatchNostrClient(
                 liveNetworkCallback = callback
                 val client = clientFor(network)
                 val closed = CompletableDeferred<Unit>()
+                // The session ends when every relay socket has ended, not when the first one fails
+                // while the others are still connecting.
+                val ended = java.util.concurrent.atomic.AtomicInteger(0)
+                val opened = java.util.concurrent.atomic.AtomicBoolean(false)
+                fun socketEnded() {
+                    if (ended.incrementAndGet() >= RELAYS.size) closed.complete(Unit)
+                }
                 val since = System.currentTimeMillis() - LOOKBACK_MS
                 val request = NostrRequest.toJson(
                     NostrRequest.Subscribe("m-live", listOf(NostrFilter.giftWrapsFor(identity.publicKeyHex, since)))
@@ -397,6 +419,7 @@ class WatchNostrClient(
                 RELAYS.forEach { url ->
                     client.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
                         override fun onOpen(webSocket: WebSocket, response: Response) {
+                            opened.set(true)
                             liveSockets[url] = webSocket
                             webSocket.send(request)
                             publishStatus()
@@ -413,22 +436,28 @@ class WatchNostrClient(
                         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                             liveSockets.remove(url, webSocket)
                             publishStatus()
-                            if (liveSockets.isEmpty()) closed.complete(Unit)
+                            socketEnded()
                         }
 
                         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                             liveSockets.remove(url, webSocket)
                             publishStatus()
-                            if (liveSockets.isEmpty()) closed.complete(Unit)
+                            socketEnded()
                         }
                     })
                 }
-                backoffMs = 5_000L
                 _status.value = _status.value.copy(lastErrorRes = null, lastCheckMs = System.currentTimeMillis())
-                closed.await()
-                runCatching { connectivity.unregisterNetworkCallback(callback) }
-                liveNetworkCallback = null
-                client.dispatcher.executorService.shutdown()
+                try {
+                    closed.await()
+                } finally {
+                    // Also when the session is cancelled (mode change, tethered, stopped).
+                    runCatching { connectivity.unregisterNetworkCallback(callback) }
+                    liveNetworkCallback = null
+                    client.dispatcher.executorService.shutdown()
+                    client.connectionPool.evictAll()
+                }
+                // Back off only while no relay could be reached at all.
+                backoffMs = if (opened.get()) 5_000L else (backoffMs * 2).coerceAtMost(120_000L)
                 delay(backoffMs)
             }
         }
@@ -451,10 +480,10 @@ class WatchNostrClient(
 
     // --- Receiving ---
 
-    private fun handleGiftWrap(event: NostrEvent, identity: NostrIdentity) {
-        synchronized(seenEventIds) { if (!seenEventIds.add(event.id)) return }
-        if (System.currentTimeMillis() / 1000 - event.createdAt > MAX_AGE_SEC) return
-        scope.launch {
+    private fun handleGiftWrap(event: NostrEvent, identity: NostrIdentity): kotlinx.coroutines.Job? {
+        synchronized(seenEventIds) { if (!seenEventIds.add(event.id)) return null }
+        if (System.currentTimeMillis() / 1000 - event.createdAt > MAX_AGE_SEC) return null
+        return scope.launch {
             try {
                 val (content, rawSender, rumorTimestamp) = NostrProtocol.decryptPrivateMessage(event, identity) ?: return@launch
                 val senderPubkey = rawSender.lowercase()
@@ -528,15 +557,17 @@ class WatchNostrClient(
 
     /** The recipient's internet key, if you are mutual favorites; null means internet can't reach them. */
     fun recipientKey(peerID: String): String? = try {
-        ContactDirectory.resolve(peerID).nostrPubkey
-            ?: FavoritesPersistenceService.shared.findNostrPubkeyForPeerID(peerID)
-            ?: GeohashAliasRegistry.get(peerID)
-            ?: if (ContactIdentityResolver.isMeshPeerId(peerID)) {
+        val resolution = ContactDirectory.resolve(peerID)
+        when {
+            // Same rule as the phone: favorites only once both sides favorited each other.
+            resolution.isMutualFavorite && resolution.nostrPubkey != null -> resolution.nostrPubkey
+            ContactIdentityResolver.isMeshPeerId(peerID) ->
                 FavoritesPersistenceService.shared.getFavoriteStatus(peerID)
                     ?.takeIf { it.isMutual }?.peerNostrPublicKey
-            } else {
-                null
-            }
+            // A conversation that started over the internet: reply the way it came.
+            ContactIdentityResolver.isNostrAlias(peerID) -> GeohashAliasRegistry.get(peerID)
+            else -> null
+        }
     } catch (_: Exception) {
         null
     }

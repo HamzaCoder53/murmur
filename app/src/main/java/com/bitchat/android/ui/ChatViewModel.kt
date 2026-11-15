@@ -1436,6 +1436,9 @@ class ChatViewModel(
             com.bitchat.android.wearlink.WearLinkController.getService()
                 ?.linkCoordinator?.wipeLinkedWatches()
         } catch (_: Exception) { }
+        // The watch link holds the old identity in memory; recreateMeshServiceAfterPanic()
+        // starts a fresh one with the new keys.
+        try { com.bitchat.android.wearlink.WearLinkController.stop() } catch (_: Exception) { }
         try {
             com.bitchat.android.geohash.LocationChannelManager
                 .getInstance(getApplication())

@@ -56,7 +56,12 @@ fun DmScreen(
 ) {
     val context = LocalContext.current
     val privateMessages by AppStateStore.privateMessages.collectAsState()
-    val messages = privateMessages[peerID] ?: emptyList()
+    // Everything stored for this person, whichever ID it was filed under (mesh, contact, internet).
+    val messages = androidx.compose.runtime.remember(privateMessages, peerID) {
+        val key = com.bitchat.watch.ui.WearChatState.conversationKey(peerID)
+        privateMessages.filterKeys { com.bitchat.watch.ui.WearChatState.conversationKey(it) == key }
+            .values.flatten().distinctBy { it.id }.sortedBy { it.timestamp }
+    }
     val mesh = WearMeshService.peek()
     val myPeerID = mesh?.myPeerID ?: ""
     val palette = LocalBitchatPalette.current

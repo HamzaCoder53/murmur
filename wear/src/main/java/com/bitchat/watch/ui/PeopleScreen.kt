@@ -59,7 +59,7 @@ fun PeopleScreen(onOpenDm: (String) -> Unit, onEditNickname: () -> Unit) {
         identityRevision
     ) {
         peers.sortedWith(
-            compareByDescending<String> { (unread[it] ?: 0) > 0 }
+            compareByDescending<String> { (unread[WearChatState.conversationKey(it)] ?: 0) > 0 }
                 .thenBy { (nicknames[it] ?: it).lowercase() }
         )
     }
@@ -116,7 +116,7 @@ fun PeopleScreen(onOpenDm: (String) -> Unit, onEditNickname: () -> Unit) {
                     encrypted = mesh?.hasEstablishedSession(peerID) == true,
                     isFavorite = identity.isFavorite,
                     isVerified = identity.isVerified,
-                    unreadCount = unread[peerID] ?: 0,
+                    unreadCount = unread[WearChatState.conversationKey(peerID)] ?: 0,
                     onClick = { onOpenDm(peerID) }
                 )
             }

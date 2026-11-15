@@ -117,6 +117,8 @@ class DmOutbox(
 
     fun clear() = synchronized(lock) { entries.clear() }
 
+    fun remove(messageID: String) = synchronized(lock) { entries.remove(messageID) }
+
     /** 15 s, 30 s, 60 s ... capped at 5 minutes. */
     internal fun backoffMs(attempts: Int): Long {
         val shift = (attempts - 1).coerceIn(0, 10)

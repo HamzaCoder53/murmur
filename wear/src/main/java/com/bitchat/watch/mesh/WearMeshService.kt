@@ -70,6 +70,8 @@ class WearMeshService private constructor(private val context: Context) {
 
         private const val PREF_CLOCK_OFFSET_MS = "mesh_clock_offset_ms"
         private const val PREF_LAST_TETHERED_MS = "last_tethered_wall_ms"
+        private const val INTERNET_RETRY_FIRST_MS = 30_000L
+        private const val INTERNET_RETRY_MAX_MS = 15 * 60_000L
 
         /**
          * How long after leaving the phone the watch still trusts its own wall clock. The OS syncs
@@ -126,6 +128,11 @@ class WearMeshService private constructor(private val context: Context) {
 
     /** Message IDs already handed to the internet, so the outbox does not resend them there. */
     private val sentOverInternet = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+
+    /** After a failed internet send: when to try again, and how many tries so far. */
+    private val internetRetry = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Int>>()
+    private val outboxLock = Any()
+    private var lastLinkMode: LinkMode? = null
     private val linkModeController = LinkModeController(
         scope = serviceScope,
         phoneReachable = linkChannel.reachableNodes.map { it.isNotEmpty() },
@@ -401,9 +408,7 @@ class WearMeshService private constructor(private val context: Context) {
                 if (!AppStateStore.addPrivateMessage(peer, message)) return false
                 try { onPrivateMessage?.invoke(message) } catch (_: Exception) { }
                 // Arrived while that chat is on screen: it has been read.
-                if (com.bitchat.watch.ui.WearChatState.appInForeground &&
-                    com.bitchat.watch.ui.WearChatState.openDmPeer == peer
-                ) {
+                if (com.bitchat.watch.ui.WearChatState.isOpen(peer)) {
                     serviceScope.launch { markConversationRead(peer) }
                 }
                 true
@@ -489,7 +494,12 @@ class WearMeshService private constructor(private val context: Context) {
     private fun onLinkModeChanged(mode: LinkMode) {
         synchronized(radioLock) {
             if (!isActive) return
-            prefs().edit().putLong(PREF_LAST_TETHERED_MS, System.currentTimeMillis()).apply()
+            // Entering or leaving the phone: the clock was disciplined just now. A standalone
+            // start that never saw the phone is not.
+            if (mode == LinkMode.TETHERED || lastLinkMode == LinkMode.TETHERED) {
+                prefs().edit().putLong(PREF_LAST_TETHERED_MS, System.currentTimeMillis()).apply()
+            }
+            lastLinkMode = mode
             when (mode) {
                 LinkMode.TETHERED -> enterTethered()
                 LinkMode.STANDALONE -> enterStandalone()
@@ -524,10 +534,12 @@ class WearMeshService private constructor(private val context: Context) {
 
     /** Linked and back with the phone: the phone delivers (or queues) what is still pending. */
     private fun handOutboxToPhone() {
+        // Only what the phone was actually handed leaves the outbox; the rest is tried again.
         dmOutbox.pending().forEach { entry ->
-            linkedClient.sendPrivate(entry.messageID, entry.peerID, entry.recipientNickname, entry.content)
+            if (linkedClient.sendPrivate(entry.messageID, entry.peerID, entry.recipientNickname, entry.content)) {
+                dmOutbox.remove(entry.messageID)
+            }
         }
-        dmOutbox.clear()
     }
 
     /** Bring up the watch's own BLE mesh and hand background scanning to the rendezvous engine. */
@@ -610,21 +622,34 @@ class WearMeshService private constructor(private val context: Context) {
     }
 
     private fun runOutboxPass(urgentPeers: Set<String> = emptySet()) {
+        synchronized(outboxLock) { runOutboxPassLocked(urgentPeers) }
+    }
+
+    private fun runOutboxPassLocked(urgentPeers: Set<String>) {
         if (!isActive || dmOutbox.size == 0 || isMirrored) return
-        // Recipients out of Bluetooth reach get one try over the internet (mutual favorites only).
+        // Recipients out of Bluetooth reach go over the internet (mutual favorites only). A failed
+        // try (often: no connection) backs off instead of waking the network every pass.
+        val now = System.currentTimeMillis()
         dmOutbox.pending().forEach { entry ->
+            val retry = internetRetry[entry.messageID]
             if (entry.messageID !in sentOverInternet &&
+                (retry == null || now >= retry.first) &&
                 !isPeerReachable(entry.peerID) &&
                 internet.canSend(entry.peerID)
             ) {
                 sentOverInternet += entry.messageID
                 serviceScope.launch {
                     if (internet.sendPrivate(entry.content, entry.peerID, entry.messageID)) {
+                        internetRetry.remove(entry.messageID)
                         AppStateStore.updatePrivateMessageStatus(
                             entry.messageID,
                             com.bitchat.android.model.DeliveryStatus.Sent
                         )
                     } else {
+                        val tries = (internetRetry[entry.messageID]?.second ?: 0) + 1
+                        val waitMs = (INTERNET_RETRY_FIRST_MS shl (tries - 1).coerceAtMost(5))
+                            .coerceAtMost(INTERNET_RETRY_MAX_MS)
+                        internetRetry[entry.messageID] = (System.currentTimeMillis() + waitMs) to tries
                         sentOverInternet -= entry.messageID
                     }
                 }

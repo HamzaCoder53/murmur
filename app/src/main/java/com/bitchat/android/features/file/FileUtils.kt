@@ -291,7 +291,10 @@ object FileUtils {
                 "files/outgoing",
                 "images/incoming",
                 "images/outgoing",
-                "voicenotes"
+                "voicenotes",
+                // Skein: voice notes uploaded by a linked watch (phone) and mirrored media (watch)
+                "murmur_watch_media",
+                "mirror_media"
             )
 
             dirsToClear.forEach { subDir ->

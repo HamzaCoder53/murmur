@@ -188,19 +188,19 @@ object MirrorProtocol {
     // --- Snapshot ---
 
     /**
-     * Encode, dropping the oldest messages until it fits in one Data Layer message. Peers and the
-     * newest messages are always kept.
+     * Encode, dropping the oldest messages until it fits in one Data Layer message. Peers are
+     * always kept; in the extreme, messages go entirely rather than the snapshot never sending.
      */
     fun encodeSnapshot(snapshot: Snapshot): ByteArray {
         var publicLimit = snapshot.publicMessages.size
         var perConversationLimit = snapshot.conversations.maxOfOrNull { it.messages.size } ?: 0
         while (true) {
             val bytes = encodeSnapshotOnce(snapshot, publicLimit, perConversationLimit)
-            if (bytes.size <= MAX_PAYLOAD_BYTES || (publicLimit <= 1 && perConversationLimit <= 1)) {
+            if (bytes.size <= MAX_PAYLOAD_BYTES || (publicLimit == 0 && perConversationLimit == 0)) {
                 return bytes
             }
-            publicLimit = (publicLimit / 2).coerceAtLeast(1)
-            perConversationLimit = (perConversationLimit / 2).coerceAtLeast(1)
+            publicLimit /= 2
+            perConversationLimit /= 2
         }
     }
 

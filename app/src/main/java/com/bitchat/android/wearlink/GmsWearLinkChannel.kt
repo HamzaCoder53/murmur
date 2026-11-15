@@ -41,7 +41,15 @@ class GmsWearLinkChannel(
     private companion object {
         const val TAG = "GmsWearLinkChannel"
         const val POLL_INTERVAL_MS = 15_000L
+
+        /**
+         * Local capabilities belong to the app, not to a client, so a channel that is being torn
+         * down must not remove one a newer channel has just added. Counted per capability.
+         */
+        val capabilityUsers = HashMap<String, Int>()
     }
+
+    private fun partFile(target: java.io.File) = java.io.File(target.path + ".part")
 
     private val handler = Handler(Looper.getMainLooper())
     private val poll = object : Runnable {
@@ -72,7 +80,10 @@ class GmsWearLinkChannel(
     private val channelCallback = object : ChannelClient.ChannelCallback() {
         override fun onChannelOpened(channel: ChannelClient.Channel) {
             val path = channel.path
-            if (!path.startsWith(WearLinkContract.FILE_PREFIX)) return
+            if (!path.startsWith(WearLinkContract.FILE_PREFIX)) {
+                channelClient?.close(channel)
+                return
+            }
             val target = try {
                 fileDestination?.invoke(channel.nodeId, path)
             } catch (e: Exception) {
@@ -84,13 +95,20 @@ class GmsWearLinkChannel(
             }
             target.parentFile?.mkdirs()
             incoming[path + "@" + channel.nodeId] = target
-            channelClient?.receiveFile(channel, Uri.fromFile(target), false)
+            // Written beside the target and renamed when complete, so nobody reads half a file.
+            channelClient?.receiveFile(channel, Uri.fromFile(partFile(target)), false)
         }
 
         override fun onInputClosed(channel: ChannelClient.Channel, closeReason: Int, appSpecificErrorCode: Int) {
             val target = incoming.remove(channel.path + "@" + channel.nodeId) ?: return
             channelClient?.close(channel)
-            if (closeReason == ChannelClient.ChannelCallback.CLOSE_REASON_NORMAL && target.length() > 0) {
+            val part = partFile(target)
+            val complete = closeReason == ChannelClient.ChannelCallback.CLOSE_REASON_NORMAL &&
+                part.length() > 0 && (part.renameTo(target) || runCatching {
+                    part.copyTo(target, overwrite = true); part.delete()
+                }.isSuccess)
+            if (!complete) part.delete()
+            if (complete) {
                 try {
                     fileReceived?.invoke(channel.nodeId, channel.path, target)
                 } catch (e: Exception) {
@@ -119,7 +137,16 @@ class GmsWearLinkChannel(
         if (!started || !path.startsWith(WearLinkContract.FILE_PREFIX) || !file.isFile) return false
         return try {
             client.openChannel(nodeId, path)
-                .addOnSuccessListener { channel -> client.sendFile(channel, Uri.fromFile(file)) }
+                .addOnSuccessListener { channel ->
+                    if (!started) {
+                        client.close(channel)
+                        return@addOnSuccessListener
+                    }
+                    client.sendFile(channel, Uri.fromFile(file)).addOnFailureListener { error ->
+                        Log.d(TAG, "File send failed: ${error.message}")
+                        client.close(channel)
+                    }
+                }
                 .addOnFailureListener { error -> Log.d(TAG, "File send failed: ${error.message}") }
             true
         } catch (e: Exception) {
@@ -183,6 +210,9 @@ class GmsWearLinkChannel(
         if (started) return
         started = true
         guarded("start") {
+            synchronized(capabilityUsers) {
+                capabilityUsers[localCapability] = (capabilityUsers[localCapability] ?: 0) + 1
+            }
             capabilityClient?.addLocalCapability(localCapability)
             capabilityClient?.addListener(capabilityListener, remoteCapability)
             messageClient?.addListener(messageListener)
@@ -197,7 +227,12 @@ class GmsWearLinkChannel(
         started = false
         handler.removeCallbacks(poll)
         guarded("stop") {
-            capabilityClient?.removeLocalCapability(localCapability)
+            val lastUser = synchronized(capabilityUsers) {
+                val left = (capabilityUsers[localCapability] ?: 1) - 1
+                if (left <= 0) capabilityUsers.remove(localCapability) else capabilityUsers[localCapability] = left
+                left <= 0
+            }
+            if (lastUser) capabilityClient?.removeLocalCapability(localCapability)
             capabilityClient?.removeListener(capabilityListener, remoteCapability)
             messageClient?.removeListener(messageListener)
             channelClient?.unregisterChannelCallback(channelCallback)

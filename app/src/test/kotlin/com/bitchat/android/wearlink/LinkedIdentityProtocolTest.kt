@@ -181,4 +181,26 @@ class LinkedIdentityProtocolTest {
     fun `an empty backlog decodes`() {
         assertNotNull(MirrorProtocol.decodeBacklog(MirrorProtocol.encodeBacklog(emptyList(), emptyList())))
     }
+
+    @Test
+    fun `a snapshot too big for one message still fits by dropping old messages`() {
+        val long = "x".repeat(4_000)
+        fun msg(i: Int) = BitchatMessage(
+            id = "m$i", sender = "peer", content = long, timestamp = Date(i * 1000L), isPrivate = true
+        )
+        val snapshot = MirrorProtocol.Snapshot(
+            myPeerID = "0011223344556677",
+            myNickname = "me",
+            peers = emptyList(),
+            publicMessages = (1..40).map(::msg),
+            conversations = (1..20).map { c ->
+                MirrorProtocol.Conversation("k$c", "%016x".format(c), (1..5).map { msg(c * 100 + it) })
+            }
+        )
+
+        val bytes = MirrorProtocol.encodeSnapshot(snapshot)
+
+        assertTrue("${bytes.size} bytes", bytes.size <= MirrorProtocol.MAX_PAYLOAD_BYTES)
+        assertNotNull(MirrorProtocol.decodeSnapshot(bytes))
+    }
 }

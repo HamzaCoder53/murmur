@@ -44,6 +44,7 @@ class LinkedPhoneClient(
         private const val MIRROR_TRANSPORT = "MIRROR"
         private const val RESTART_DELAY_MS = 2_500L
         private const val MEDIA_DIR = "mirror_media"
+        private const val MEDIA_RETRY_MS = 60_000L
 
         fun isLinked(context: Context): Boolean =
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_LINKED, false)
@@ -94,7 +95,8 @@ class LinkedPhoneClient(
     )
 
     private val pendingMedia = java.util.concurrent.ConcurrentHashMap<String, PendingMedia>()
-    private val requestedMedia = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+    /** When each missing file was last asked for, so a failed transfer is asked for again. */
+    private val requestedMedia = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     /** Voice notes recorded on this watch, by message ID: shown from here, never fetched back. */
     private val ownMedia = java.util.concurrent.ConcurrentHashMap<String, java.io.File>()
@@ -125,6 +127,8 @@ class LinkedPhoneClient(
     fun stop() {
         channel.setControlListener(null)
         channel.setFileListener(null, null)
+        // Restarted later (maybe away from the phone): the link controller decides afresh.
+        mirroring = false
     }
 
     private fun phoneNode(): String? = channel.reachableNodes.value.firstOrNull()
@@ -155,11 +159,16 @@ class LinkedPhoneClient(
     private fun onControl(nodeId: String, path: String, data: ByteArray) {
         when (path) {
             WearLinkContract.CTL_LANGUAGE -> PhoneLanguageSync.onPhoneLanguage(context, data)
-            WearLinkContract.CTL_LINK_IDENTITY -> if (!linked) adoptIdentity(data)
+            // Only an answer to this watch's own request is taken.
+            WearLinkContract.CTL_LINK_IDENTITY -> if (!linked && _state.value == State.REQUESTING) adoptIdentity(data)
             WearLinkContract.CTL_LINK_DENIED -> if (!linked) _state.value = State.DENIED
-            WearLinkContract.CTL_WIPE -> if (linked) {
-                Log.w(TAG, "Phone ran panic: erasing the shared identity")
-                resetAndRestart(eraseIdentity = true)
+            WearLinkContract.CTL_WIPE -> {
+                // Confirm, so the phone stops repeating the wipe to this watch.
+                channel.sendControl(nodeId, WearLinkContract.CTL_UNLINK, ByteArray(0))
+                if (linked) {
+                    Log.w(TAG, "Phone ran panic: erasing the shared identity")
+                    resetAndRestart(eraseIdentity = true)
+                }
             }
             WearLinkContract.CTL_MIRROR_STATE -> if (linked && mirroring) {
                 // Off the main thread: a first snapshot can hold hundreds of messages.
@@ -192,8 +201,13 @@ class LinkedPhoneClient(
     }
 
     private fun resetAndRestart(eraseIdentity: Boolean) {
+        // Nothing from the old identity may be written back while erasing.
+        mirroring = false
+        channel.setFileListener(null, null)
+        pendingMedia.clear()
         scope.launch {
             eraseSavedChats()
+            mediaDir.deleteRecursively()
             if (eraseIdentity) IdentityBundle.erase(context)
             context.getSharedPreferences(WATCH_PREFS, Context.MODE_PRIVATE).edit().remove(KEY_NICKNAME).commit()
             prefs.edit().clear().commit()
@@ -228,8 +242,9 @@ class LinkedPhoneClient(
         val node = phoneNode() ?: return
         val since = prefs.getLong(KEY_STANDALONE_SINCE, 0L)
         val backlog = if (since > 0) buildBacklog(since) else MirrorProtocol.encodeBacklog(emptyList(), emptyList())
-        channel.sendControl(node, WearLinkContract.CTL_MIRROR_HELLO, backlog)
-        prefs.edit().putLong(KEY_STANDALONE_SINCE, 0L).apply()
+        if (channel.sendControl(node, WearLinkContract.CTL_MIRROR_HELLO, backlog)) {
+            prefs.edit().putLong(KEY_STANDALONE_SINCE, 0L).apply()
+        }
         sendPendingNickname()
     }
 
@@ -309,7 +324,12 @@ class LinkedPhoneClient(
         val local = ownMedia[message.id] ?: mirrorFile(message.id, media.extension).takeIf { it.isFile }
         if (local != null) return message.copy(type = typeOf(media.kind), content = local.absolutePath)
         pendingMedia[message.id] = PendingMedia(conversationPeerID, message, media)
-        if (requestedMedia.add(message.id)) sendCommand(MirrorProtocol.Command.FetchMedia(message.id))
+        val now = System.currentTimeMillis()
+        val last = requestedMedia[message.id]
+        if (last == null || now - last > MEDIA_RETRY_MS) {
+            requestedMedia[message.id] = now
+            if (!sendCommand(MirrorProtocol.Command.FetchMedia(message.id))) requestedMedia.remove(message.id)
+        }
         return message
     }
 

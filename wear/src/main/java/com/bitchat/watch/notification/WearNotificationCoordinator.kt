@@ -71,7 +71,8 @@ class WearNotificationCoordinator private constructor(context: Context) {
             senderPeerID = senderPeerID,
             senderIsSystem = message.sender == "system",
             appInForeground = WearChatState.appInForeground,
-            openDmPeer = WearChatState.openDmPeer
+            // The open thread may be filed under another ID for the same person.
+            openDmPeer = if (WearChatState.isOpen(senderPeerID)) senderPeerID else WearChatState.openDmPeer
         )
         if (!shouldNotify || !canPostNotifications()) return
 

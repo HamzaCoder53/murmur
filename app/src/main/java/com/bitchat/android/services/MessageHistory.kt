@@ -22,6 +22,7 @@ object MessageHistory {
     private const val PREFS_NAME = "murmur_message_history"
     private const val KEY_SAVE_PRIVATE = "save_private_history"
     const val DEFAULT_ENABLED = true
+    private const val SECOND_ERASE_DELAY_MS = 3_000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -64,6 +65,14 @@ object MessageHistory {
     }
 
     private suspend fun erase(context: Context) {
+        eraseOnce(context)
+        // A write that was already under way when history was switched off can land after the
+        // first wipe. Wipe once more shortly after, unless history was switched back on.
+        kotlinx.coroutines.delay(SECOND_ERASE_DELAY_MS)
+        if (!_enabled.value) eraseOnce(context)
+    }
+
+    private suspend fun eraseOnce(context: Context) {
         try {
             val cleared = ConversationRepository.getInstance(context.applicationContext).clearAllAndWait()
             if (!cleared) Log.w(TAG, "Saved history could not be fully erased")

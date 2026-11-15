@@ -62,6 +62,7 @@ class LinkedWatchCoordinator(
         const val ACTION_DENY = "xfuturehb.murmur.WATCH_LINK_DENY"
         const val EXTRA_NODE = "node"
         private const val LANGUAGE_POLL_MS = 3_000L
+        private const val KEY_PENDING_WIPE = "pending_wipe"
         private const val LANGUAGE_RESEND_MS = 10 * 60_000L
 
         /** Set while the phone's watch link is running, for the approval receiver. */
@@ -103,6 +104,11 @@ class LinkedWatchCoordinator(
                 val id = path.removePrefix(WearLinkContract.FILE_UPLOAD)
                 uploads[id] = file
                 pendingVoice.remove(id)?.let { command -> scope.launch { sendVoice(command, file) } }
+                // An upload whose command never comes is not kept.
+                scope.launch {
+                    delay(UPLOAD_WAIT_MS * 2)
+                    if (uploads.remove(id, file)) file.delete()
+                }
             }
         )
         if (pushJob == null) pushJob = scope.launch { pushLoop() }
@@ -129,7 +135,10 @@ class LinkedWatchCoordinator(
     private fun onControl(nodeId: String, path: String, data: ByteArray) {
         when (path) {
             WearLinkContract.CTL_LINK_REQUEST -> showApproval(nodeId, String(data, Charsets.UTF_8))
-            WearLinkContract.CTL_UNLINK -> setLinked(nodeId, false)
+            WearLinkContract.CTL_UNLINK -> {
+                setLinked(nodeId, false)
+                wipeConfirmed(nodeId)
+            }
             WearLinkContract.CTL_MIRROR_HELLO -> if (isLinked(nodeId)) {
                 scope.launch {
                     MirrorProtocol.decodeBacklog(data)?.let { mergeBacklog(it) }
@@ -211,8 +220,28 @@ class LinkedWatchCoordinator(
 
     /** Panic: every linked watch must erase the shared identity. */
     fun wipeLinkedWatches() {
-        linkedNodes().forEach { channel.sendControl(it, WearLinkContract.CTL_WIPE, ByteArray(0)) }
-        prefs.edit().remove(KEY_NODES).apply()
+        val nodes = linkedNodes()
+        nodes.forEach { channel.sendControl(it, WearLinkContract.CTL_WIPE, ByteArray(0)) }
+        // A watch that is away or asleep misses that message: keep telling it until it confirms.
+        prefs.edit()
+            .remove(KEY_NODES)
+            .putStringSet(KEY_PENDING_WIPE, pendingWipes() + nodes)
+            .commit()
+    }
+
+    private fun pendingWipes(): Set<String> = prefs.getStringSet(KEY_PENDING_WIPE, emptySet()).orEmpty()
+
+    private fun wipeConfirmed(nodeId: String) {
+        val pending = pendingWipes()
+        if (nodeId in pending) prefs.edit().putStringSet(KEY_PENDING_WIPE, pending - nodeId).apply()
+    }
+
+    private suspend fun pendingWipeLoop() {
+        channel.reachableNodes.collect { reachable ->
+            (pendingWipes() intersect reachable).forEach {
+                channel.sendControl(it, WearLinkContract.CTL_WIPE, ByteArray(0))
+            }
+        }
     }
 
     // --- Mirroring ---
@@ -227,6 +256,7 @@ class LinkedWatchCoordinator(
         }
         // The watch app follows the phone app's language, linked or not.
         launch { languageLoop() }
+        launch { pendingWipeLoop() }
         // Sessions and connection state change without touching those flows.
         while (true) {
             delay(REFRESH_MS)
@@ -324,6 +354,10 @@ class LinkedWatchCoordinator(
                 } else {
                     // The file is still on its way; send when it lands (or give up after a while).
                     pendingVoice[command.messageID] = command
+                    // The upload may have landed between the check above and now.
+                    uploads[command.messageID]?.let { landed ->
+                        if (pendingVoice.remove(command.messageID) != null) sendVoice(command, landed)
+                    }
                     scope.launch {
                         delay(UPLOAD_WAIT_MS)
                         pendingVoice.remove(command.messageID)
@@ -382,8 +416,11 @@ class LinkedWatchCoordinator(
                     recipientNickname = command.recipientNickname,
                     messageID = command.messageID
                 )
-                if (route != MessageRouter.RouteResult.QUEUED && route != MessageRouter.RouteResult.DROPPED) {
-                    AppStateStore.updatePrivateMessageStatus(command.messageID, DeliveryStatus.Sent)
+                when (route) {
+                    MessageRouter.RouteResult.QUEUED -> Unit
+                    MessageRouter.RouteResult.DROPPED ->
+                        AppStateStore.updatePrivateMessageStatus(command.messageID, DeliveryStatus.Failed("Not sent"))
+                    else -> AppStateStore.updatePrivateMessageStatus(command.messageID, DeliveryStatus.Sent)
                 }
             }
         }
@@ -454,7 +491,10 @@ class LinkedWatchCoordinator(
     /** Send a voice note recorded on the watch as if it had been recorded on the phone. */
     private suspend fun sendVoice(command: MirrorProtocol.Command.SendVoice, upload: java.io.File) {
         uploads.remove(command.messageID)
-        if (AppStateStore.hasSeenMessage(command.messageID)) return
+        if (AppStateStore.hasSeenMessage(command.messageID)) {
+            upload.delete()
+            return
+        }
         val extension = command.extension.ifBlank { "m4a" }
         val file = java.io.File(mediaDir, command.messageID.safeFileName() + "." + extension)
         if (!upload.renameTo(file)) {
