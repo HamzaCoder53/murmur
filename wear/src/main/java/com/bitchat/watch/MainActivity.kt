@@ -79,6 +79,7 @@ sealed interface WearScreen {
     data class UserDetail(val peerID: String) : WearScreen
     data class Verification(val peerID: String) : WearScreen
     data class TextInput(val peerID: String?) : WearScreen
+    data object Help : WearScreen
 }
 
 class MainActivity : ComponentActivity() {
@@ -398,6 +399,7 @@ internal class WearNavigationState(
             is WearScreen.Verification -> "verification" to screen.peerID
             is WearScreen.TextInput -> screen.peerID?.let { "text_dm" to it }
                 ?: ("text_public" to "")
+            WearScreen.Help -> "help" to ""
         }
 
         private fun decodeScreen(type: String, peerID: String): WearScreen? = when (type) {
@@ -413,6 +415,7 @@ internal class WearNavigationState(
                 ?.let(WearScreen::Verification)
             "text_dm" -> peerID.takeIf(String::isNotBlank)?.let(WearScreen::TextInput)
             "text_public" -> WearScreen.TextInput(null)
+            "help" -> WearScreen.Help
             else -> null
         }
     }
@@ -552,7 +555,7 @@ private fun WearScreenContent(
             var chatOwnsGesture by remember { mutableStateOf(false) }
             ChatHomePager(
                 swipeEnabled = !chatOwnsGesture,
-                menu = { ChatMenuScreen(onQuit = onQuit) },
+                menu = { ChatMenuScreen(onQuit = onQuit, onOpenHelp = { onNavigate(WearScreen.Help) }) },
                 chat = {
                     ChatScreen(
                         active = active,
@@ -593,6 +596,7 @@ private fun WearScreenContent(
             onOpenVerification = { onNavigate(WearScreen.Verification(screen.peerID)) }
         )
         is WearScreen.Verification -> VerificationCodeScreen(peerID = screen.peerID)
+        is WearScreen.Help -> com.bitchat.watch.ui.HelpScreen()
         is WearScreen.TextInput -> {
             val mesh = WearMeshService.peek()
             val sendScope = androidx.compose.runtime.rememberCoroutineScope()

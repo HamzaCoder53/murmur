@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.PowerSettingsNew
@@ -83,7 +84,7 @@ fun ChatHomePager(
  * status, the live push-to-talk switch, and quitting.
  */
 @Composable
-fun ChatMenuScreen(onQuit: () -> Unit) {
+fun ChatMenuScreen(onQuit: () -> Unit, onOpenHelp: () -> Unit = {}) {
     val context = LocalContext.current
     val palette = LocalBitchatPalette.current
     val peers by AppStateStore.peers.collectAsState()
@@ -154,6 +155,16 @@ fun ChatMenuScreen(onQuit: () -> Unit) {
                     },
                 ) {
                     Text("Save history", maxLines = 1)
+                }
+            }
+            item {
+                FilledTonalButton(
+                    onClick = onOpenHelp,
+                    modifier = Modifier.fillMaxWidth(),
+                    icon = { Icon(imageVector = Icons.Filled.HelpOutline, contentDescription = null) },
+                    secondaryLabel = { Text("Guide", color = palette.textTertiary, maxLines = 1) },
+                ) {
+                    Text("How it works", maxLines = 1)
                 }
             }
             val internet = com.bitchat.watch.mesh.WearMeshService.peek()?.internet
