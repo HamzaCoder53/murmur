@@ -1,6 +1,7 @@
 package com.bitchat.desktop.ui
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -330,7 +331,6 @@ class SkeinViewModel(
         )
 
         val locationIds = (channels.map { it.geohash } +
-            byConversation.keys.filterIsInstance<ConversationId.Location>().map { it.geohash } +
             listOfNotNull((l.selected as? ConversationId.Location)?.geohash)).distinct()
         val locationSummaries = locationIds.map { summary(ConversationId.Location(it), "#$it") }
 
@@ -398,6 +398,8 @@ class SkeinViewModel(
             mentionSuggestions = mentionSuggestions(l.draft, peers.map { it.nickname }),
         )
     }
+
+    fun close() = scope.cancel()
 }
 
 /** Live messages win over their saved copies (newer delivery state); deduplicated, ordered by time. */

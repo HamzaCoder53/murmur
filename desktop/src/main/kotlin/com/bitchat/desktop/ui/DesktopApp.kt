@@ -31,6 +31,8 @@ import com.bitchat.desktop.core.DesktopMeshNode
 import com.bitchat.desktop.core.LoopbackHub
 import com.bitchat.desktop.link.DesktopLinkController
 import com.bitchat.desktop.link.DesktopLinkedAppBridge
+import com.bitchat.desktop.nostr.DesktopNostrRelayClient
+import com.bitchat.desktop.nostr.NostrLocationChannelsPort
 import com.bitchat.desktop.platform.DesktopPlatform
 import com.bitchat.desktop.platform.NoopBleTransport
 import com.bitchat.desktop.storage.DesktopContactsStore
@@ -142,12 +144,20 @@ fun runDesktopApp(
         }
     }
 
+    val relayClient = DesktopNostrRelayClient(DesktopNostrRelayClient.DEFAULT_RELAYS, appScope)
+    val nostrLocations = NostrLocationChannelsPort(
+        context = ctx,
+        myNickname = { identity.nickname },
+        relayClient = relayClient,
+        scope = appScope,
+    )
+
     val ports = customizePorts(
         SkeinPorts(
             messaging = MeshMessagingAdapter(node, appScope),
             contacts = contactsStore,
             history = historyStore,
-            locations = InMemoryLocationChannelsPort(myNickname = { identity.nickname }),
+            locations = nostrLocations,
             settings = settingsPort,
             platform = DesktopPlatformToggles(platform),
             panels = panels,
@@ -160,8 +170,23 @@ fun runDesktopApp(
 
     application {
         var windowVisible by remember { mutableStateOf(!startHidden) }
+        val uiState by viewModel.state.collectAsState()
+        val totalUnread = uiState.privateChats.sumOf { it.unread } + uiState.mesh.unread
+        LaunchedEffect(totalUnread) {
+            platform.tray.setUnreadCount(totalUnread)
+        }
+        LaunchedEffect(node) {
+            node.privateMessages.collect { list ->
+                val latest = list.lastOrNull() ?: return@collect
+                if (!windowVisible && latest.senderPeerID != identity.peerID) {
+                    platform.notifications.notify(latest.id, latest.sender, "New private message")
+                }
+            }
+        }
         val shutdown = {
             platform.tray.hide()
+            viewModel.close()
+            relayClient.stop()
             link?.stop()
             (platform.discovery as? AutoCloseable)?.close()
             node.stop()

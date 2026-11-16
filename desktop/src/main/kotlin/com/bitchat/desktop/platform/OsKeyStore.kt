@@ -46,8 +46,16 @@ class MacKeychainKeyStore(
         val proc = ProcessBuilder("/usr/bin/security", "find-generic-password", "-s", service, "-a", alias, "-w")
             .start()
         val out = proc.inputStream.bufferedReader().readText().trim()
+        val err = proc.errorStream.bufferedReader().readText().trim()
         val code = proc.waitFor()
-        if (code != 0) return null
+        if (code == 44 || err.contains("could not be found in the keychain", ignoreCase = true)) {
+            return null
+        }
+        if (code != 0) {
+            throw java.security.GeneralSecurityException(
+                "macOS Keychain lookup failed for '$alias' (exit $code): $err",
+            )
+        }
         check(out.length == 64 && out.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) {
             "Malformed Keychain item for alias '$alias'"
         }

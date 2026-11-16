@@ -234,10 +234,17 @@ tasks.withType<Test>().configureEach {
 compose.desktop {
     application {
         mainClass = "com.bitchat.desktop.MainKt"
+        val desktopVer = providers.gradleProperty("skeinDesktopVersion").getOrElse("1.0.0")
+        val sentryDsn = providers.gradleProperty("skein.sentryDsn").orNull
+            ?: System.getenv("SKEIN_SENTRY_DSN")?.takeIf { it.isNotBlank() }
+        jvmArgs("-Dskein.version=$desktopVer")
+        if (sentryDsn != null) {
+            jvmArgs("-Dskein.sentryDsn=$sentryDsn")
+        }
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi)
             packageName = "Skein"
-            packageVersion = providers.gradleProperty("skeinDesktopVersion").getOrElse("1.0.0")
+            packageVersion = desktopVer
             appResourcesRootDir.set(layout.buildDirectory.dir("app-resources"))
             macOS {
                 bundleID = "xfuturehb.murmur.desktop"

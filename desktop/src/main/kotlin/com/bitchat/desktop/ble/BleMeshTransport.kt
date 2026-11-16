@@ -46,7 +46,15 @@ class BleMeshTransport(
                 val packet = BitchatPacket.fromBinaryData(frame) ?: return
                 val senderPeerID = packet.senderID.joinToString("") { "%02x".format(it) }
                 linkToPeer[linkId] = senderPeerID
-                peerToLink[senderPeerID] = linkId
+                // Only bind peer -> link on a full-TTL direct announce or if no route exists yet,
+                // so multi-hop relayed packets do not hijack direct-link routing.
+                val isDirectAnnounce = packet.type == com.bitchat.android.protocol.MessageType.ANNOUNCE.value &&
+                    packet.ttl == com.bitchat.android.util.AppConstants.MESSAGE_TTL_HOPS
+                if (isDirectAnnounce) {
+                    peerToLink[senderPeerID] = linkId
+                } else {
+                    peerToLink.putIfAbsent(senderPeerID, linkId)
+                }
                 onPacketReceived(packet, senderPeerID, linkId)
             }
 

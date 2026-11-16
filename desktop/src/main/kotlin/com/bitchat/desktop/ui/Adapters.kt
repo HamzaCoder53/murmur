@@ -44,11 +44,11 @@ class MeshMessagingAdapter(
                 chats.flatMap { (peerID, list) -> list.map { toChatMessage(it, myPeerID, ConversationId.Private(peerID)) } }
         }.onEach { _messages.value = it }.launchIn(scope)
 
-        // Session state has no flow of its own; re-read it whenever peers or messages change.
-        combine(node.peers, node.privateMessages, handshaking) { ids, _, pending ->
+        combine(node.peers, node.sessionVersion, handshaking) { ids, _, pending ->
             ids.map { id ->
+                val established = node.hasEstablishedSession(id)
                 val session = when {
-                    node.hasEstablishedSession(id) -> SessionState.ESTABLISHED
+                    established -> SessionState.ESTABLISHED
                     id in pending -> SessionState.HANDSHAKING
                     else -> SessionState.NONE
                 }

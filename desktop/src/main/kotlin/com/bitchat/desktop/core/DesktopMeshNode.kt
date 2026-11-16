@@ -57,6 +57,12 @@ class DesktopMeshNode(
     private val _peers = MutableStateFlow<List<String>>(emptyList())
     val peers: StateFlow<List<String>> = _peers.asStateFlow()
 
+    private val _sessionVersion = MutableStateFlow(0)
+    val sessionVersion: StateFlow<Int> = _sessionVersion.asStateFlow()
+
+    private data class PendingPrivate(val id: String, val text: String, val recipientNickname: String)
+    private val pendingPrivate = HashMap<String, MutableList<PendingPrivate>>()
+
     val peerID: String get() = identity.peerID
 
     /**
@@ -98,6 +104,17 @@ class DesktopMeshNode(
     )
 
     init {
+        val prevEstablished = identity.encryptionService.onSessionEstablished
+        identity.encryptionService.onSessionEstablished = { peerID ->
+            prevEstablished?.invoke(peerID)
+            flushPendingPrivate(peerID)
+            _sessionVersion.value++
+        }
+        val prevLost = identity.encryptionService.onSessionLost
+        identity.encryptionService.onSessionLost = { peerID ->
+            prevLost?.invoke(peerID)
+            _sessionVersion.value++
+        }
         core.delegate = object : MeshDelegate {
             override fun didReceiveMessage(message: BitchatMessage) {
                 if (message.isPrivate) {
@@ -184,6 +201,7 @@ class DesktopMeshNode(
     ) {
         if (text.isEmpty()) return
         val id = messageID ?: UUID.randomUUID().toString()
+        val hasSession = hasEstablishedSession(recipientPeerID)
         val local = BitchatMessage(
             id = id,
             sender = identity.nickname,
@@ -192,10 +210,26 @@ class DesktopMeshNode(
             isPrivate = true,
             recipientNickname = recipientNickname,
             senderPeerID = identity.peerID,
-            deliveryStatus = DeliveryStatus.Sent,
+            deliveryStatus = if (hasSession) DeliveryStatus.Sent else DeliveryStatus.Sending,
         )
         addPrivate(recipientPeerID, local, read = true)
-        core.sendPrivateMessage(text, recipientPeerID, recipientNickname, id)
+        if (hasSession) {
+            core.sendPrivateMessage(text, recipientPeerID, recipientNickname, id)
+        } else {
+            synchronized(lock) {
+                pendingPrivate.getOrPut(recipientPeerID) { mutableListOf() }
+                    .add(PendingPrivate(id, text, recipientNickname))
+            }
+            core.initiateNoiseHandshake(recipientPeerID)
+        }
+    }
+
+    private fun flushPendingPrivate(peerID: String) {
+        val queued = synchronized(lock) { pendingPrivate.remove(peerID) } ?: return
+        for (item in queued) {
+            updateDeliveryStatus(item.id, DeliveryStatus.Sent)
+            core.sendPrivateMessage(item.text, peerID, item.recipientNickname, item.id)
+        }
     }
 
     fun sendReadReceipt(messageID: String, recipientPeerID: String) =

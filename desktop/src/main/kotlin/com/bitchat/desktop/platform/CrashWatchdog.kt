@@ -16,17 +16,16 @@ object CrashWatchdog {
         sleepMs: (Long) -> Unit = Thread::sleep,
     ): Int {
         var crashesInWindow = 0
-        var windowStart = System.currentTimeMillis()
         while (true) {
+            val startedAt = System.currentTimeMillis()
             val proc = ProcessBuilder(command)
                 .inheritIO()
                 .start()
             val exitCode = proc.waitFor()
             if (exitCode == 0) return 0
 
-            val now = System.currentTimeMillis()
-            if (now - windowStart > WINDOW_MS) {
-                windowStart = now
+            val uptimeMs = System.currentTimeMillis() - startedAt
+            if (uptimeMs >= WINDOW_MS) {
                 crashesInWindow = 0
             }
             crashesInWindow++

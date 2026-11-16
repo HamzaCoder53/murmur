@@ -15,7 +15,12 @@ class OsAutostartController(
 ) : AutostartController {
 
     override val isSupported: Boolean
-        get() = (hostOs == HostOs.MAC || hostOs == HostOs.WINDOWS) && !executablePath.isNullOrBlank()
+        get() {
+            if (hostOs != HostOs.MAC && hostOs != HostOs.WINDOWS) return false
+            val exe = executablePath?.takeIf { it.isNotBlank() } ?: return false
+            val name = File(exe).name.lowercase()
+            return name != "java" && name != "java.exe" && name != "javaw.exe"
+        }
 
     private val macPlistFile: File
         get() = File(macLaunchAgentsDir, "xfuturehb.murmur.desktop.plist")

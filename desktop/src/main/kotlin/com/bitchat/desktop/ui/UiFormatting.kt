@@ -22,7 +22,7 @@ fun formatFingerprint(fingerprint: String): String {
 fun parseMentions(text: String, knownNicknames: Set<String>): List<String> =
     MENTION_REGEX.findAll(text)
         .map { it.groupValues[1] }
-        .filter { it in knownNicknames }
+        .filter { candidate -> knownNicknames.any { it.equals(candidate, ignoreCase = true) } }
         .distinct()
         .toList()
 
@@ -88,4 +88,4 @@ fun validNickname(input: String): String? {
 
 const val MAX_NICKNAME_CHARS = 32
 private const val GEOHASH_ALPHABET = "0123456789bcdefghjkmnpqrstuvwxyz"
-private val MENTION_REGEX = "@([\\p{L}\\p{N}_]+)".toRegex()
+private val MENTION_REGEX = "(?:^|\\s)@([\\p{L}\\p{N}_]+)".toRegex()
