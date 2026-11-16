@@ -83,6 +83,7 @@ sealed interface WearScreen {
     data class Verification(val peerID: String) : WearScreen
     data class TextInput(val peerID: String?) : WearScreen
     data object Help : WearScreen
+    data object Notifications : WearScreen
     data object Locations : WearScreen
     data class LocationChat(val geohash: String) : WearScreen
     data class LocationInput(val geohash: String) : WearScreen
@@ -408,6 +409,7 @@ internal class WearNavigationState(
             is WearScreen.TextInput -> screen.peerID?.let { "text_dm" to it }
                 ?: ("text_public" to "")
             WearScreen.Help -> "help" to ""
+            WearScreen.Notifications -> "notifications" to ""
             WearScreen.Locations -> "locations" to ""
             is WearScreen.LocationChat -> "location_chat" to screen.geohash
             is WearScreen.LocationInput -> "location_input" to screen.geohash
@@ -427,6 +429,7 @@ internal class WearNavigationState(
             "text_dm" -> peerID.takeIf(String::isNotBlank)?.let(WearScreen::TextInput)
             "text_public" -> WearScreen.TextInput(null)
             "help" -> WearScreen.Help
+            "notifications" -> WearScreen.Notifications
             "locations" -> WearScreen.Locations
             "location_chat" -> peerID.takeIf(String::isNotBlank)?.let(WearScreen::LocationChat)
             "location_input" -> peerID.takeIf(String::isNotBlank)?.let(WearScreen::LocationInput)
@@ -573,6 +576,7 @@ private fun WearScreenContent(
                     ChatMenuScreen(
                         onQuit = onQuit,
                         onOpenHelp = { onNavigate(WearScreen.Help) },
+                        onOpenNotifications = { onNavigate(WearScreen.Notifications) },
                         onOpenLocations = { onNavigate(WearScreen.Locations) }
                     )
                 },
@@ -617,6 +621,7 @@ private fun WearScreenContent(
         )
         is WearScreen.Verification -> VerificationCodeScreen(peerID = screen.peerID)
         is WearScreen.Help -> com.bitchat.watch.ui.HelpScreen()
+        is WearScreen.Notifications -> com.bitchat.watch.ui.NotificationSettingsScreen()
         is WearScreen.Locations -> com.bitchat.watch.ui.LocationChannelsScreen(
             onOpenChannel = { onNavigate(WearScreen.LocationChat(it)) }
         )

@@ -32,7 +32,6 @@ class WearNotificationCoordinator private constructor(context: Context) {
         const val EXTRA_OPEN_DM = "com.bitchat.watch.extra.OPEN_DM"
         const val EXTRA_PEER_ID = "com.bitchat.watch.extra.PEER_ID"
 
-        private const val MESSAGE_CHANNEL_ID = "bitchat_watch_messages"
         private const val CONVERSATION_NOTIFICATION_ID_BASE = 10_000
 
         @Volatile
@@ -96,6 +95,7 @@ class WearNotificationCoordinator private constructor(context: Context) {
     private fun postConversationNotification(peerID: String) {
         val messages = pendingMessages[peerID] ?: return
         val latest = messages.lastOrNull() ?: return
+        val channelId = AlertSettings.ensureChannel(appContext)
         val sender = Person.Builder()
             .setName(latest.senderNickname)
             .setKey(peerID)
@@ -119,13 +119,13 @@ class WearNotificationCoordinator private constructor(context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val publicVersion = NotificationCompat.Builder(appContext, MESSAGE_CHANNEL_ID)
+        val publicVersion = NotificationCompat.Builder(appContext, channelId)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(appContext.getString(R.string.notification_new_private_message))
             .setContentText(appContext.getString(R.string.notification_private_message_hidden))
             .build()
 
-        val notification = NotificationCompat.Builder(appContext, MESSAGE_CHANNEL_ID)
+        val notification = NotificationCompat.Builder(appContext, channelId)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(latest.senderNickname)
             .setContentText(latest.preview)
@@ -148,18 +148,8 @@ class WearNotificationCoordinator private constructor(context: Context) {
     }
 
     private fun createMessageChannel() {
-        val channel = NotificationChannel(
-            MESSAGE_CHANNEL_ID,
-            appContext.getString(R.string.message_channel_name),
-            NotificationManager.IMPORTANCE_HIGH
-        ).apply {
-            description = appContext.getString(R.string.message_channel_description)
-            enableVibration(true)
-            setShowBadge(true)
-            lockscreenVisibility = NotificationCompat.VISIBILITY_PRIVATE
-        }
-        appContext.getSystemService(NotificationManager::class.java)
-            .createNotificationChannel(channel)
+        // Sound and vibration follow the wearer's choice in Notifications (see AlertSettings).
+        AlertSettings.ensureChannel(appContext)
     }
 
     private fun canPostNotifications(): Boolean {

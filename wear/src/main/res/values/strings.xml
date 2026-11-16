@@ -216,4 +216,17 @@
     <string name="help_privacy_body">Nothing is stored on a server. Menu → Save history keeps private chats on this watch only; turn it off to erase them.</string>
     <string name="help_language_title">Language</string>
     <string name="help_language_body">The watch uses the same language as Skein on your phone. Change it in the phone app\'s settings.</string>
+    <!-- Notifications and broadcast power -->
+    <string name="alerts_title">Notifications</string>
+    <string name="alerts_intro">How a new private message alerts you. Tap one to try it.</string>
+    <string name="alerts_both">Vibrate and sound</string>
+    <string name="alerts_vibrate">Vibrate only</string>
+    <string name="alerts_sound">Sound only</string>
+    <string name="alerts_silent">Silent</string>
+    <string name="alerts_selected">Selected</string>
+    <string name="radio_power_title">Broadcast power</string>
+    <string name="radio_power_auto">Auto</string>
+    <string name="radio_power_low">Low</string>
+    <string name="radio_power_medium">Medium</string>
+    <string name="radio_power_high">High</string>
 </resources>

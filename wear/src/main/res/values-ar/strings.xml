@@ -246,4 +246,17 @@
     <string name="help_privacy_body">لا يُخزَّن شيء على أي خادم. القائمة ← حفظ السجل يحتفظ بالمحادثات الخاصة على هذه الساعة فقط، وإيقافه يمحوها.</string>
     <string name="help_language_title">اللغة</string>
     <string name="help_language_body">تستخدم الساعة لغة Skein نفسها على هاتفك. يمكنك تغييرها من إعدادات التطبيق على الهاتف.</string>
+    <!-- الإشعارات وقوة البث -->
+    <string name="alerts_title">الإشعارات</string>
+    <string name="alerts_intro">كيف تنبّهك رسالة خاصة جديدة. اضغط خيارًا لتجربته.</string>
+    <string name="alerts_both">اهتزاز وصوت</string>
+    <string name="alerts_vibrate">اهتزاز فقط</string>
+    <string name="alerts_sound">صوت فقط</string>
+    <string name="alerts_silent">صامت</string>
+    <string name="alerts_selected">محدد</string>
+    <string name="radio_power_title">قوة البث</string>
+    <string name="radio_power_auto">تلقائي</string>
+    <string name="radio_power_low">منخفضة</string>
+    <string name="radio_power_medium">متوسطة</string>
+    <string name="radio_power_high">عالية</string>
 </resources>

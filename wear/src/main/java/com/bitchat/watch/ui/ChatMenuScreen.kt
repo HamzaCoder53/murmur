@@ -1,5 +1,8 @@
 package com.bitchat.watch.ui
 
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material.icons.filled.CellTower
+import androidx.compose.material.icons.filled.Notifications
 import com.bitchat.watch.R
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -88,7 +91,12 @@ fun ChatHomePager(
  * status, the live push-to-talk switch, and quitting.
  */
 @Composable
-fun ChatMenuScreen(onQuit: () -> Unit, onOpenHelp: () -> Unit = {}, onOpenLocations: () -> Unit = {}) {
+fun ChatMenuScreen(
+    onQuit: () -> Unit,
+    onOpenHelp: () -> Unit = {},
+    onOpenLocations: () -> Unit = {},
+    onOpenNotifications: () -> Unit = {}
+) {
     val context = LocalContext.current
     val palette = LocalBitchatPalette.current
     val peers by AppStateStore.peers.collectAsState()
@@ -171,6 +179,21 @@ fun ChatMenuScreen(onQuit: () -> Unit, onOpenHelp: () -> Unit = {}, onOpenLocati
                     Text(stringResource(R.string.menu_location_chat), maxLines = 1)
                 }
             }
+            item {
+                FilledTonalButton(
+                    onClick = onOpenNotifications,
+                    modifier = Modifier.fillMaxWidth(),
+                    icon = { Icon(imageVector = Icons.Filled.Notifications, contentDescription = null) },
+                    secondaryLabel = {
+                        val style by com.bitchat.watch.notification.AlertSettings.style.collectAsState()
+                        LaunchedEffect(Unit) { com.bitchat.watch.notification.AlertSettings.current(context) }
+                        Text(stringResource(style.labelRes), color = palette.textTertiary, maxLines = 1)
+                    },
+                ) {
+                    Text(stringResource(R.string.alerts_title), maxLines = 1)
+                }
+            }
+            item { BroadcastPowerButton() }
             item {
                 FilledTonalButton(
                     onClick = onOpenHelp,
@@ -347,6 +370,30 @@ private fun LinkPhoneButton(
         },
     ) {
         Text(stringResource(if (linked) R.string.link_button_unlink else R.string.link_button_link), maxLines = 1)
+    }
+}
+
+/** Tap to cycle how loudly the watch advertises (see RadioPower). */
+@Composable
+private fun BroadcastPowerButton() {
+    val context = LocalContext.current
+    val palette = LocalBitchatPalette.current
+    LaunchedEffect(Unit) { com.bitchat.android.mesh.RadioPower.init(context) }
+    val setting by com.bitchat.android.mesh.RadioPower.setting.collectAsState()
+    val all = com.bitchat.android.mesh.RadioPower.Setting.entries
+    val label = when (setting) {
+        com.bitchat.android.mesh.RadioPower.Setting.AUTO -> R.string.radio_power_auto
+        com.bitchat.android.mesh.RadioPower.Setting.LOW -> R.string.radio_power_low
+        com.bitchat.android.mesh.RadioPower.Setting.MEDIUM -> R.string.radio_power_medium
+        com.bitchat.android.mesh.RadioPower.Setting.HIGH -> R.string.radio_power_high
+    }
+    FilledTonalButton(
+        onClick = { com.bitchat.android.mesh.RadioPower.set(context, all[(all.indexOf(setting) + 1) % all.size]) },
+        modifier = Modifier.fillMaxWidth(),
+        icon = { Icon(imageVector = Icons.Filled.CellTower, contentDescription = null) },
+        secondaryLabel = { Text(stringResource(label), color = palette.textTertiary, maxLines = 1) },
+    ) {
+        Text(stringResource(R.string.radio_power_title), maxLines = 1)
     }
 }
 

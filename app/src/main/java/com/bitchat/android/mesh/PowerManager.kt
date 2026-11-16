@@ -237,22 +237,22 @@ class PowerManager private constructor(context: Context) : LifecycleEventObserve
         return builder.setReportDelay(0).build()
     }
 
-    fun getAdvertiseSettings(): AdvertiseSettings = when (profile.value.mode) {
-        PowerMode.PERFORMANCE -> AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
-            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
-            .setConnectable(true).setTimeout(0).build()
-        PowerMode.BALANCED -> AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
-            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
-            .setConnectable(true).setTimeout(0).build()
-        PowerMode.POWER_SAVER -> AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER)
-            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_LOW)
-            .setConnectable(true).setTimeout(0).build()
-        PowerMode.ULTRA_LOW_POWER -> AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER)
-            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_ULTRA_LOW)
+    fun getAdvertiseSettings(): AdvertiseSettings {
+        val (advertiseMode, profileTxLevel) = when (profile.value.mode) {
+            PowerMode.PERFORMANCE ->
+                AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY to AdvertiseSettings.ADVERTISE_TX_POWER_HIGH
+            PowerMode.BALANCED ->
+                AdvertiseSettings.ADVERTISE_MODE_BALANCED to AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM
+            PowerMode.POWER_SAVER ->
+                AdvertiseSettings.ADVERTISE_MODE_LOW_POWER to AdvertiseSettings.ADVERTISE_TX_POWER_LOW
+            PowerMode.ULTRA_LOW_POWER ->
+                AdvertiseSettings.ADVERTISE_MODE_LOW_POWER to AdvertiseSettings.ADVERTISE_TX_POWER_ULTRA_LOW
+        }
+        // Skein: the chosen broadcast power, full-power beacons and weak-link boosts.
+        RadioPower.init(appContext)
+        return AdvertiseSettings.Builder()
+            .setAdvertiseMode(advertiseMode)
+            .setTxPowerLevel(RadioPower.txLevel(profileLevel = profileTxLevel))
             .setConnectable(true).setTimeout(0).build()
     }
 

@@ -1,5 +1,6 @@
 package com.bitchat.android.ui
 
+import androidx.compose.runtime.LaunchedEffect
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
@@ -599,6 +600,37 @@ fun AboutSheet(
                                         subtitle = stringResource(R.string.about_spam_filter_desc),
                                         checked = spamFilterEnabled,
                                         onCheckedChange = { SpamFilterPreferences.setEnabled(it) }
+                                    )
+
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(start = 54.dp),
+                                        thickness = 1.dp,
+                                        color = colorScheme.outlineVariant
+                                    )
+
+                                    // Skein: broadcast power (tap to cycle Auto, Low, Medium, High)
+                                    val radioPower by com.bitchat.android.mesh.RadioPower.setting.collectAsState()
+                                    LaunchedEffect(Unit) { com.bitchat.android.mesh.RadioPower.init(context) }
+                                    val radioPowerLabel = stringResource(
+                                        when (radioPower) {
+                                            com.bitchat.android.mesh.RadioPower.Setting.AUTO -> R.string.radio_power_auto
+                                            com.bitchat.android.mesh.RadioPower.Setting.LOW -> R.string.radio_power_low
+                                            com.bitchat.android.mesh.RadioPower.Setting.MEDIUM -> R.string.radio_power_medium
+                                            com.bitchat.android.mesh.RadioPower.Setting.HIGH -> R.string.radio_power_high
+                                        }
+                                    )
+                                    SettingsToggleRow(
+                                        icon = Icons.Filled.Speed,
+                                        title = stringResource(R.string.radio_power_title) + ": " + radioPowerLabel,
+                                        subtitle = stringResource(R.string.radio_power_desc),
+                                        checked = radioPower != com.bitchat.android.mesh.RadioPower.Setting.LOW,
+                                        onCheckedChange = {
+                                            val all = com.bitchat.android.mesh.RadioPower.Setting.entries
+                                            com.bitchat.android.mesh.RadioPower.set(
+                                                context,
+                                                all[(all.indexOf(radioPower) + 1) % all.size]
+                                            )
+                                        }
                                     )
 
                                     HorizontalDivider(

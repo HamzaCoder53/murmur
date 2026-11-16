@@ -414,4 +414,10 @@
   <string name="watch_link_big_text">تريد %1$s استخدام هوية Skein الخاصة بهذا الهاتف. ستتمكن من قراءة رسائلك وإرسالها، حتى بعيدًا عن الهاتف. لا تسمح بذلك إلا لساعتك أنت.</string>
   <string name="watch_link_deny">رفض</string>
   <string name="watch_link_allow">سماح</string>
+  <string name="radio_power_title">قوة البث</string>
+  <string name="radio_power_desc">مدى قدرة الآخرين على إيجادك. اضغط للتغيير. «تلقائي» يرفعها عندما يكون أحدهم بعيدًا، وكل 5 دقائق يبث بأقصى قوة لمدة 10 ثوانٍ.</string>
+  <string name="radio_power_auto">تلقائي</string>
+  <string name="radio_power_low">منخفضة</string>
+  <string name="radio_power_medium">متوسطة</string>
+  <string name="radio_power_high">عالية</string>
 </resources>

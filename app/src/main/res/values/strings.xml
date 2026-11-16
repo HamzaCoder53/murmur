@@ -682,4 +682,10 @@
   <string name="watch_link_big_text">%1$s wants to use this phone\'s Skein identity. It will be able to read and send your messages, including when away from the phone. Only allow this for your own watch.</string>
   <string name="watch_link_deny">Deny</string>
   <string name="watch_link_allow">Allow</string>
+  <string name="radio_power_title">Broadcast power</string>
+  <string name="radio_power_desc">How far away others can find you. Tap to change. Auto raises it when someone is far away, and every 5 minutes it broadcasts at full power for 10 seconds.</string>
+  <string name="radio_power_auto">Auto</string>
+  <string name="radio_power_low">Low</string>
+  <string name="radio_power_medium">Medium</string>
+  <string name="radio_power_high">High</string>
 </resources>

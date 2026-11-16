@@ -1,5 +1,7 @@
 package com.bitchat.android.mesh
 
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import android.bluetooth.*
 import android.content.Context
 import android.util.Log
@@ -125,6 +127,48 @@ class BluetoothConnectionManager(
             (try { com.bitchat.android.ui.debug.DebugSettingsManager.getInstance().gattClientEnabled.value } catch (_: Exception) { true })
     }
 
+    private val RADIO_CHECK_MS = 30_000L
+
+    /** Full-power beacons and weak-link checks (see [RadioPower]). */
+    private var radioPowerJob: kotlinx.coroutines.Job? = null
+
+    private fun startRadioPower() {
+        if (radioPowerJob?.isActive == true) return
+        radioPowerJob = connectionScope.launch {
+            // Restart advertising whenever the level it should use changes.
+            launch {
+                RadioPower.state.drop(1).collect {
+                    if (this@BluetoothConnectionManager.isActive && isBleTransportEnabled() && isGattServerEnabled()) {
+                        serverManager.restartAdvertising()
+                    }
+                }
+            }
+            var sinceBeaconMs = 0L
+            while (true) {
+                delay(RADIO_CHECK_MS)
+                if (!this@BluetoothConnectionManager.isActive) continue
+                val weakest = try {
+                    connectionTracker.getConnectedDevices().keys
+                        .mapNotNull { connectionTracker.getBestRSSI(it) }
+                        .minOrNull()
+                } catch (_: Exception) {
+                    null
+                }
+                RadioPower.onWeakestLink(weakest, System.currentTimeMillis())
+                sinceBeaconMs += RADIO_CHECK_MS
+                if (sinceBeaconMs >= RadioPower.BEACON_PERIOD_MS) {
+                    sinceBeaconMs = 0L
+                    RadioPower.setBeacon(true)
+                    try {
+                        delay(RadioPower.BEACON_LENGTH_MS)
+                    } finally {
+                        RadioPower.setBeacon(false)
+                    }
+                }
+            }
+        }
+    }
+
     init {
         connectionScope.launch {
             var previousMode: PowerManager.PowerMode? = null
@@ -236,6 +280,7 @@ class BluetoothConnectionManager(
         
         try {
             isActive = true
+            startRadioPower()
 
         // set the adapter's name to our 8-character peerID for iOS privacy, TODO: Make this configurable
         // try {
