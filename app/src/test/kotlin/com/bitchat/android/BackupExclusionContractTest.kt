@@ -88,9 +88,11 @@ class BackupExclusionContractTest {
     }
 
     @Test
-    fun `the manifest still disables backup and points at both rule files`() {
+    fun `the manifest routes backup through SkeinBackupAgent and points at both deny-by-default rule files`() {
         val text = manifest.readText()
-        assertTrue(text.contains("""android:allowBackup="false""""))
+        assertTrue(text.contains("""android:allowBackup="true""""))
+        assertTrue(text.contains("""android:backupAgent="com.bitchat.android.backup.SkeinBackupAgent""""))
+        assertTrue(text.contains("""android:fullBackupOnly="true""""))
         assertTrue(text.contains("""android:dataExtractionRules="@xml/data_extraction_rules""""))
         assertTrue(text.contains("""android:fullBackupContent="@xml/backup_rules""""))
     }

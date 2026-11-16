@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.QrCodeScanner
@@ -23,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -33,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -79,6 +82,8 @@ fun BackupSettingsSection(onWipeThisPhone: (() -> Unit)?) {
                 BackupRow(Icons.Filled.QrCodeScanner, stringResource(R.string.transfer_receive_title), stringResource(R.string.transfer_receive_desc)) {
                     dialog = BackupDialog.RECEIVE
                 }
+                RowDivider()
+                AndroidBackupToggleRow()
             }
         }
     }
@@ -100,6 +105,42 @@ private fun RowDivider() {
         thickness = 1.dp,
         color = MaterialTheme.colorScheme.outlineVariant
     )
+}
+
+@Composable
+private fun AndroidBackupToggleRow() {
+    val context = LocalContext.current
+    var enabled by remember { mutableStateOf(AndroidBackupPreferences.isEnabled(context)) }
+    val colorScheme = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                val next = !enabled
+                enabled = next
+                AndroidBackupPreferences.setEnabled(context, next)
+            }
+            .padding(horizontal = 16.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Filled.Backup, contentDescription = null, tint = colorScheme.primary, modifier = Modifier.size(22.dp))
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(stringResource(R.string.android_backup_title), fontSize = 15.sp, color = colorScheme.onSurface)
+            Text(stringResource(R.string.android_backup_desc), fontSize = 12.sp, color = colorScheme.onSurfaceVariant)
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Switch(
+            checked = enabled,
+            onCheckedChange = { next ->
+                enabled = next
+                AndroidBackupPreferences.setEnabled(context, next)
+            }
+        )
+    }
 }
 
 @Composable

@@ -28,6 +28,11 @@ class BitchatApplication : Application() {
         // Initialize LocationNotesManager dependencies early so sheet subscriptions can start immediately
         try { com.bitchat.android.nostr.LocationNotesInitializer.initialize(this) } catch (_: Exception) { }
 
+        // Apply any pending Android Auto Backup restore before favorites/history/identity singletons load
+        try {
+            com.bitchat.android.backup.AndroidBackupRestorer.restoreIfPending(this)
+        } catch (_: Exception) { }
+
         // Initialize favorites persistence early so MessageRouter/NostrTransport can use it on startup
         try {
             com.bitchat.android.favorites.FavoritesPersistenceService.initialize(this)

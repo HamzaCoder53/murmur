@@ -518,4 +518,6 @@
   <string name="linked_devices_restarting">جارٍ إعادة التشغيل بالهوية المرتبطة…</string>
   <string name="linked_devices_failed">فشل الربط (%1$s)</string>
   <string name="linked_devices_invalid_qr">رمز QR غير صالح لربط أجهزة Skein.</string>
+  <string name="android_backup_title">النسخ الاحتياطي لنظام Android</string>
+  <string name="android_backup_desc">نسخ الهوية والمحادثات النصية احتياطيًا عبر النسخ المشفّر للجهاز في Android (دون الوسائط).</string>
 </resources>

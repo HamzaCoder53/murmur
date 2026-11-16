@@ -786,4 +786,6 @@
   <string name="linked_devices_restarting">Restarting with your linked identity…</string>
   <string name="linked_devices_failed">Linking failed (%1$s)</string>
   <string name="linked_devices_invalid_qr">Not a valid Skein device-link QR code.</string>
+  <string name="android_backup_title">Android backup</string>
+  <string name="android_backup_desc">Back up identity and text chats via Android\'s encrypted device backup (excludes media).</string>
 </resources>
