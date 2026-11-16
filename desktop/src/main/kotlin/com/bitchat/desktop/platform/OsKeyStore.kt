@@ -15,14 +15,15 @@ class MacKeychainKeyStore(
     private val lock = Any()
 
     override fun getOrCreateKey(alias: String): ByteArray = synchronized(lock) {
-        readExisting(alias)?.let { return it }
+        val safeAlias = sanitizeAlias(alias)
+        readExisting(safeAlias)?.let { return it }
         val key = ByteArray(32).also(SecureRandom()::nextBytes)
         val hex = key.joinToString("") { "%02x".format(it) }
         val proc = ProcessBuilder("/usr/bin/security", "-i")
             .redirectErrorStream(true)
             .start()
         proc.outputStream.bufferedWriter().use { w ->
-            w.write("add-generic-password -U -s ${quote(service)} -a ${quote(alias)} -w ${quote(hex)}\n")
+            w.write("add-generic-password -U -s ${quote(service)} -a ${quote(safeAlias)} -w ${quote(hex)}\n")
             w.flush()
         }
         val code = proc.waitFor()
@@ -31,11 +32,15 @@ class MacKeychainKeyStore(
     }
 
     override fun delete(alias: String): Boolean = synchronized(lock) {
-        val proc = ProcessBuilder("/usr/bin/security", "delete-generic-password", "-s", service, "-a", alias)
+        val safeAlias = sanitizeAlias(alias)
+        val proc = ProcessBuilder("/usr/bin/security", "delete-generic-password", "-s", service, "-a", safeAlias)
             .redirectErrorStream(true)
             .start()
         proc.waitFor() == 0
     }
+
+    private fun sanitizeAlias(alias: String): String =
+        alias.replace(Regex("[^A-Za-z0-9_-]"), "_")
 
     private fun readExisting(alias: String): ByteArray? {
         val proc = ProcessBuilder("/usr/bin/security", "find-generic-password", "-s", service, "-a", alias, "-w")

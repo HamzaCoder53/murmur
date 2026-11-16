@@ -7,6 +7,7 @@ package com.bitchat.desktop.sentry
  */
 object SentryScrubber {
     private val hexKeyOrPeerRegex = Regex("""\b[0-9a-fA-F]{16,128}\b""")
+    private val bech32NostrRegex = Regex("""\b(?:npub|nsec)1[023456789acdefghjklmnpqrstuvwxyz]{20,}\b""")
     private val unixHomePathRegex = Regex("""/(Users|home)/[^/\s:]+""")
     private val winUserPathRegex = Regex("""[A-Za-z]:\\Users\\[^\\\s:]+""")
     private val ipv4Regex = Regex("""\b(?:\d{1,3}\.){3}\d{1,3}\b""")
@@ -21,6 +22,7 @@ object SentryScrubber {
         s = unixHomePathRegex.replace(s, "/<user>")
         s = winUserPathRegex.replace(s, """C:\<user>""")
         s = hexKeyOrPeerRegex.replace(s, "<hex-redacted>")
+        s = bech32NostrRegex.replace(s, "<nostr-redacted>")
         s = ipv4Regex.replace(s, "<ip-redacted>")
         s = coordRegex.replace(s, "<loc-redacted>")
         return s

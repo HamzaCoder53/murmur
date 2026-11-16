@@ -15,11 +15,12 @@ class OsNotifier(
         }
         if (hostOs == HostOs.MAC) {
             try {
-                val safeTitle = title.replace("\"", "'")
-                val safeBody = body.replace("\"", "'")
                 ProcessBuilder(
-                    "/usr/bin/osascript", "-e",
-                    "display notification \"$safeBody\" with title \"$safeTitle\"",
+                    "/usr/bin/osascript",
+                    "-e", "on run argv",
+                    "-e", "display notification (item 1 of argv) with title (item 2 of argv)",
+                    "-e", "end run",
+                    "--", body, title,
                 ).start()
             } catch (_: Exception) {
             }

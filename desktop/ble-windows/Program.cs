@@ -227,18 +227,27 @@ internal static class Program
         _localCharacteristic = charResult.Characteristic;
         _localCharacteristic.SubscribedClientsChanged += (sender, _) =>
         {
+            var activeSessions = new HashSet<string>();
             foreach (var client in sender.SubscribedClients)
             {
                 var sessionKey = client.Session.DeviceId.Id;
+                activeSessions.Add(sessionKey);
                 var linkId = PeripheralIdBySession.GetOrAdd(sessionKey, _ =>
                 {
                     var id = Guid.NewGuid().ToString("N");
-                    PeripheralLinks[id] = client;
                     var mtu = (int)Math.Max(23, client.Session.MaxPduSize - 3);
                     Emit(new { ev = "linkUp", link = id, mtu, role = "peripheral" });
                     return id;
                 });
-                _ = linkId;
+                PeripheralLinks[linkId] = client;
+            }
+            foreach (var kv in PeripheralIdBySession)
+            {
+                if (!activeSessions.Contains(kv.Key) && PeripheralIdBySession.TryRemove(kv.Key, out var removedId))
+                {
+                    PeripheralLinks.TryRemove(removedId, out _);
+                    Emit(new { ev = "linkDown", link = removedId });
+                }
             }
         };
 

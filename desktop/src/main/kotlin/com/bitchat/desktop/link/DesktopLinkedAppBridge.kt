@@ -122,14 +122,16 @@ class DesktopLinkedAppBridge(
 
     override fun mediaFile(messageID: String): Pair<String, ByteArray>? {
         val dir = File(identity.context.cacheDir, "link_media")
-        val f = dir.listFiles()?.firstOrNull { it.name.startsWith("${messageID}_") } ?: return null
-        return f.name.removePrefix("${messageID}_") to f.readBytes()
+        val safeId = messageID.replace(Regex("[^A-Za-z0-9_-]"), "_")
+        val f = dir.listFiles()?.firstOrNull { it.name.startsWith("${safeId}_") } ?: return null
+        return f.name.removePrefix("${safeId}_") to f.readBytes()
     }
 
     override suspend fun onMediaReceived(messageID: String, fileName: String, data: ByteArray) {
         val dir = File(identity.context.cacheDir, "link_media").apply { mkdirs() }
-        val safe = fileName.replace(Regex("[^A-Za-z0-9._-]"), "_")
-        File(dir, "${messageID}_$safe").writeBytes(data)
+        val safeId = messageID.replace(Regex("[^A-Za-z0-9_-]"), "_")
+        val safeName = fileName.replace(Regex("[^A-Za-z0-9._-]"), "_")
+        File(dir, "${safeId}_$safeName").writeBytes(data)
     }
 
     override fun identityBundle(): ByteArray? =
