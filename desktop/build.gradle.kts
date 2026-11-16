@@ -197,17 +197,16 @@ composeCompiler {
 }
 
 dependencies {
-    // Compose for Desktop. Every supported OS/arch runtime is declared explicitly (instead of
-    // compose.desktop.currentOs) so that the strict lockfile and checksum metadata are the same
-    // on every build host; packaging passes -PskeinTarget=<macos_arm64|macos_x64|windows_x64|windows_arm64>
-    // to bundle only the target's native runtime.
+    // Compose for Desktop. Every supported OS/arch runtime is declared unconditionally so that
+    // strict dependency locking (:desktop:runtimeClasspath) stays identical on every build host.
+    // When -PskeinTarget=<macos_arm64|macos_x64|windows_x64|windows_arm64> is passed,
+    // createDistributable strips the foreign native runtime jars from the packaged app.
     implementation(compose.desktop.common)
     implementation(compose.material3)
-    val skeinTarget = providers.gradleProperty("skeinTarget").orNull
-    if (skeinTarget == null || skeinTarget == "macos_arm64") runtimeOnly(compose.desktop.macos_arm64)
-    if (skeinTarget == null || skeinTarget == "macos_x64") runtimeOnly(compose.desktop.macos_x64)
-    if (skeinTarget == null || skeinTarget == "windows_x64") runtimeOnly(compose.desktop.windows_x64)
-    if (skeinTarget == null || skeinTarget == "windows_arm64") runtimeOnly(compose.desktop.windows_arm64)
+    runtimeOnly(compose.desktop.macos_arm64)
+    runtimeOnly(compose.desktop.macos_x64)
+    runtimeOnly(compose.desktop.windows_x64)
+    runtimeOnly(compose.desktop.windows_arm64)
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.swing)
@@ -234,6 +233,7 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi)
             packageName = "Skein"
             packageVersion = providers.gradleProperty("skeinDesktopVersion").getOrElse("1.0.0")
+            appResourcesRootDir.set(layout.buildDirectory.dir("app-resources"))
             macOS {
                 bundleID = "xfuturehb.murmur.desktop"
                 infoPlist {
@@ -262,16 +262,54 @@ tasks.matching { it.name.startsWith("package") }.configureEach {
 val buildMacBleHelper = tasks.register<Exec>("buildMacBleHelper") {
     onlyIf { System.getProperty("os.name").lowercase().contains("mac") }
     val src = file("ble-mac/Sources/main.swift")
+    val plist = file("ble-mac/Info.plist")
     val out = layout.buildDirectory.file("ble-mac/skein-ble-mac")
-    inputs.file(src)
+    inputs.files(src, plist)
     outputs.file(out)
     doFirst {
         out.get().asFile.parentFile.mkdirs()
     }
     commandLine(
         "swiftc", "-O", "-framework", "CoreBluetooth", "-framework", "Foundation",
+        "-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist",
+        "-Xlinker", plist.absolutePath,
         src.absolutePath, "-o", out.get().asFile.absolutePath,
     )
+}
+
+val stageDesktopBleResources = tasks.register<Copy>("stageDesktopBleResources") {
+    dependsOn(buildMacBleHelper)
+    from(layout.buildDirectory.file("ble-mac/skein-ble-mac")) {
+        into("macos")
+        filePermissions { unix("755") }
+    }
+    from(layout.buildDirectory.file("ble-windows/skein-ble-windows.exe")) {
+        into("windows")
+    }
+    into(layout.buildDirectory.dir("app-resources"))
+}
+
+tasks.matching { it.name == "prepareAppResources" }.configureEach {
+    dependsOn(stageDesktopBleResources)
+}
+
+val skeinTargetProp = providers.gradleProperty("skeinTarget")
+tasks.matching { it.name == "createDistributable" }.configureEach {
+    doLast {
+        val target = skeinTargetProp.orNull ?: return@doLast
+        val keepTag = target.replace('_', '-')
+        val allTags = listOf("macos-arm64", "macos-x64", "windows-x64", "windows-arm64")
+        val foreignTags = allTags.filter { it != keepTag }
+        outputs.files.forEach { root ->
+            root.walkTopDown()
+                .filter { f ->
+                    f.isFile && f.extension == "jar" &&
+                        (f.name.startsWith("skiko-awt-runtime-") || f.name.startsWith("desktop-jvm-")) &&
+                        foreignTags.any { tag -> tag in f.name }
+                }
+                .forEach { it.delete() }
+        }
+    }
 }
 
 // `./gradlew :desktop:run --args=--smoke` uses the run task the Compose plugin registers.

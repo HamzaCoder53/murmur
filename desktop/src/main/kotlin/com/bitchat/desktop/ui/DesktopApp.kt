@@ -38,11 +38,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.bitchat.desktop.ble.BleMeshTransport
 import com.bitchat.desktop.core.DesktopIdentity
 import com.bitchat.desktop.core.DesktopMeshNode
 import com.bitchat.desktop.core.LoopbackHub
 import com.bitchat.desktop.platform.DesktopPlatform
 import com.bitchat.desktop.platform.HostOs
+import com.bitchat.desktop.platform.NoopBleTransport
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 
 enum class SkeinTab { CHAT, DMS, PEOPLE, LOCATIONS, HISTORY, LINKED, BACKUPS, SETTINGS }
 
@@ -57,14 +63,36 @@ data class DesktopUiSettings(
 fun runDesktopApp(platform: DesktopPlatform, startHidden: Boolean = false) {
     val ctx = Context(platform.paths.dataDir)
     val identity = DesktopIdentity.loadOrCreate(ctx)
-    val (node, transport) = DesktopMeshNode.overLoopback(identity, LoopbackHub())
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    var bleTransport: BleMeshTransport? = null
+    var loopbackTransport: com.bitchat.desktop.core.LoopbackTransport? = null
+    val node: DesktopMeshNode = if (platform.ble !== NoopBleTransport) {
+        lateinit var createdNode: DesktopMeshNode
+        val bleMesh = BleMeshTransport(
+            ble = platform.ble,
+            scope = appScope,
+            onPacketReceived = { pkt, senderPeerID, linkId ->
+                createdNode.receive(pkt, senderPeerID, linkId)
+            },
+        )
+        createdNode = DesktopMeshNode(identity, bleMesh)
+        bleTransport = bleMesh
+        bleMesh.start()
+        createdNode
+    } else {
+        val (n, lt) = DesktopMeshNode.overLoopback(identity, LoopbackHub())
+        loopbackTransport = lt
+        n
+    }
     node.start()
     application {
         var windowVisible by remember { mutableStateOf(!startHidden) }
         val shutdown = {
             platform.tray.hide()
             node.stop()
-            transport.close()
+            bleTransport?.stop()
+            loopbackTransport?.close()
+            appScope.cancel()
             exitApplication()
         }
         androidx.compose.runtime.LaunchedEffect(platform.tray) {

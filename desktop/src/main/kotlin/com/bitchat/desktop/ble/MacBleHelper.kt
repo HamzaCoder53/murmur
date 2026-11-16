@@ -24,7 +24,9 @@ object MacBleHelper {
             add(File("desktop/build/ble-mac/$HELPER_NAME"))
             add(File("build/ble-mac/$HELPER_NAME"))
         }
-        return candidates.firstOrNull { it.isFile && it.canExecute() }
+        return candidates.firstOrNull { it.isFile }?.also { f ->
+            if (!f.canExecute()) f.setExecutable(true, true)
+        }?.takeIf { it.canExecute() }
     }
 
     fun createTransport(): BleTransport {

@@ -202,24 +202,28 @@ final class BleHelper: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate,
 }
 
 let helper = BleHelper()
-while let line = readLine(strippingNewline: true) {
-    guard let data = line.data(using: .utf8),
-          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          let op = obj["op"] as? String else { continue }
-    switch op {
-    case "start":
-        helper.start()
-    case "stop":
-        helper.stop()
-        exit(0)
-    case "send":
-        if let link = obj["link"] as? String,
-           let b64 = obj["b64"] as? String,
-           let payload = Data(base64Encoded: b64) {
-            helper.send(linkId: link, data: payload)
+DispatchQueue.global(qos: .userInitiated).async {
+    while let line = readLine(strippingNewline: true) {
+        guard let data = line.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let op = obj["op"] as? String else { continue }
+        switch op {
+        case "start":
+            helper.start()
+        case "stop":
+            helper.stop()
+            exit(0)
+        case "send":
+            if let link = obj["link"] as? String,
+               let b64 = obj["b64"] as? String,
+               let payload = Data(base64Encoded: b64) {
+                helper.send(linkId: link, data: payload)
+            }
+        default:
+            break
         }
-    default:
-        break
     }
+    helper.stop()
+    exit(0)
 }
-helper.stop()
+RunLoop.main.run()
