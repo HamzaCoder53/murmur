@@ -52,6 +52,8 @@ The authoritative pins are:
 - `settings-gradle.lockfile`
 - `app/gradle.lockfile`
 - `wear/gradle.lockfile`
+- `desktop/gradle.lockfile` (Windows/macOS desktop; regeneration steps in
+  [desktop-architecture.md](desktop-architecture.md#verification))
 - `gradle/verification-metadata.xml`
 - `tools/reproducible-builds/TOOLCHAIN.env`
 - `tools/arti-build/TOOLCHAIN.env`

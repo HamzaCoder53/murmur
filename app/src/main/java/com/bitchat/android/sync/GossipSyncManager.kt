@@ -1,7 +1,6 @@
 package com.bitchat.android.sync
 
 import android.util.Log
-import com.bitchat.android.mesh.BluetoothPacketBroadcaster
 import com.bitchat.android.model.RequestSyncPacket
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.protocol.MessageType
