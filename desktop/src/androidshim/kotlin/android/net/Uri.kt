@@ -1,6 +1,8 @@
 package android.net
 
-import java.net.URLDecoder
+import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 
 /**
@@ -11,10 +13,11 @@ import java.nio.charset.StandardCharsets
  */
 class Uri private constructor(
     val scheme: String?,
-    val authority: String?,
+    private val encodedAuthority: String?,
     val path: String?,
     private val encodedQuery: String?,
 ) {
+    val authority: String? get() = encodedAuthority?.let(::decode)
     val host: String? get() = authority?.substringAfterLast('@')?.substringBefore(':')
 
     val query: String? get() = encodedQuery?.let(::decode)
@@ -36,7 +39,7 @@ class Uri private constructor(
 
     override fun toString(): String = buildString {
         if (scheme != null) append(scheme).append(':')
-        if (authority != null) append("//").append(authority)
+        if (encodedAuthority != null) append("//").append(encodedAuthority)
         if (path != null) append(path)
         if (encodedQuery != null) append('?').append(encodedQuery)
     }
@@ -81,7 +84,7 @@ class Uri private constructor(
             val q = rest.indexOf('?')
             val path = (if (q == -1) rest else rest.substring(0, q)).ifEmpty { null }
             val query = if (q == -1) null else rest.substring(q + 1)
-            return Uri(scheme, authority?.let(::decode), path, query)
+            return Uri(scheme, authority, path, query)
         }
 
         private const val UNRESERVED =
@@ -105,8 +108,42 @@ class Uri private constructor(
         }
 
         @JvmStatic
-        fun decode(s: String): String =
-            // Protect '+' so URLDecoder keeps it literal, as Android's Uri.decode does.
-            URLDecoder.decode(s.replace("+", "%2B"), StandardCharsets.UTF_8)
+        fun decode(s: String): String {
+            if ('%' !in s) return s
+            val out = StringBuilder(s.length)
+            val bytes = ByteArrayOutputStream()
+            val decoder = StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPLACE)
+                .onUnmappableCharacter(CodingErrorAction.REPLACE)
+            fun flushBytes() {
+                if (bytes.size() > 0) {
+                    out.append(decoder.decode(ByteBuffer.wrap(bytes.toByteArray())))
+                    decoder.reset()
+                    bytes.reset()
+                }
+            }
+            var i = 0
+            while (i < s.length) {
+                val c = s[i]
+                if (c == '%') {
+                    val hi = if (i + 1 < s.length) s[i + 1].digitToIntOrNull(16) else null
+                    val lo = if (i + 2 < s.length) s[i + 2].digitToIntOrNull(16) else null
+                    if (hi != null && lo != null) {
+                        bytes.write((hi shl 4) or lo)
+                        i += 3
+                    } else {
+                        flushBytes()
+                        out.append('\uFFFD')
+                        i += 1
+                    }
+                } else {
+                    flushBytes()
+                    out.append(c)
+                    i += 1
+                }
+            }
+            flushBytes()
+            return out.toString()
+        }
     }
 }

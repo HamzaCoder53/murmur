@@ -5,8 +5,14 @@ import com.bitchat.desktop.core.DesktopIdentity
 import com.bitchat.desktop.platform.AppPaths
 import com.bitchat.desktop.platform.DesktopPlatform
 import com.bitchat.desktop.platform.InMemoryKeyStore
+import com.bitchat.desktop.shim.OwnerOnlyFiles
+import com.bitchat.desktop.shim.ShimRuntime
 import com.bitchat.desktop.ui.runDesktopApp
+import java.io.File
+import java.nio.channels.FileChannel
+import java.nio.channels.FileLock
 import java.nio.file.Files
+import java.nio.file.StandardOpenOption
 import kotlin.system.exitProcess
 
 /**
@@ -21,8 +27,47 @@ fun main(args: Array<String>) {
     if ("--smoke" in args) {
         exitProcess(runSmoke())
     }
+    val paths = AppPaths.forCurrentHost()
+    val instanceLock = acquireInstanceLock(paths.dataDir)
+    if (instanceLock == null) {
+        System.err.println("Skein is already running for ${paths.dataDir.name}.")
+        exitProcess(0)
+    }
     val platform = DesktopPlatform.forCurrentHost().install()
-    runDesktopApp(platform)
+    Thread.setDefaultUncaughtExceptionHandler { _, e ->
+        platform.crashReporter.capture(e)
+    }
+    try {
+        runDesktopApp(platform)
+    } finally {
+        try { platform.crashReporter.flush() } catch (_: Exception) { }
+        try { platform.crashReporter.close() } catch (_: Exception) { }
+        try { instanceLock.close() } catch (_: Exception) { }
+    }
+}
+
+internal fun acquireInstanceLock(dataDir: File): AutoCloseable? {
+    OwnerOnlyFiles.ensureDir(dataDir)
+    val lockFile = File(dataDir, "skein.lock")
+    val channel = FileChannel.open(
+        lockFile.toPath(),
+        StandardOpenOption.CREATE,
+        StandardOpenOption.WRITE,
+    )
+    OwnerOnlyFiles.restrict(lockFile)
+    val lock: FileLock? = try {
+        channel.tryLock()
+    } catch (_: Exception) {
+        null
+    }
+    if (lock == null) {
+        channel.close()
+        return null
+    }
+    return AutoCloseable {
+        try { lock.release() } catch (_: Exception) { }
+        try { channel.close() } catch (_: Exception) { }
+    }
 }
 
 internal fun runSmoke(): Int = try {
@@ -31,6 +76,7 @@ internal fun runSmoke(): Int = try {
     try {
         DesktopPlatform(paths = AppPaths(dir), keyStore = InMemoryKeyStore()).install()
         val created = DesktopIdentity.loadOrCreate(Context(dir))
+        ShimRuntime.resetCachesForTests()
         val reloaded = DesktopIdentity.loadOrCreate(Context(dir))
         check(created.peerID == reloaded.peerID) { "identity did not survive a reload" }
         check(created.peerID.length == DesktopIdentity.PEER_ID_HEX_CHARS) { "bad peer ID length" }
@@ -39,6 +85,7 @@ internal fun runSmoke(): Int = try {
         println("nickname=${created.nickname}")
         0
     } finally {
+        ShimRuntime.resetCachesForTests()
         dir.deleteRecursively()
     }
 } catch (e: Throwable) {

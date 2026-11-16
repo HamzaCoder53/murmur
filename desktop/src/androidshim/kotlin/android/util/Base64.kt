@@ -45,16 +45,103 @@ object Base64 {
         encodeToString(input, flags).toByteArray(Charsets.US_ASCII)
 
     @JvmStatic
-    fun decode(str: String, flags: Int): ByteArray {
-        val compact = buildString(str.length) {
-            for (c in str) if (!c.isWhitespace()) append(c)
-        }.trimEnd('=')
-        val decoder = if (flags and URL_SAFE != 0) java.util.Base64.getUrlDecoder() else java.util.Base64.getDecoder()
-        // java.util.Base64 accepts unpadded input; Android also accepts both alphabets loosely,
-        // but the shared code always decodes with the flags it encoded with.
-        return decoder.decode(compact)
-    }
+    fun decode(str: String, flags: Int): ByteArray =
+        decode(str.toByteArray(Charsets.ISO_8859_1), flags)
 
     @JvmStatic
-    fun decode(input: ByteArray, flags: Int): ByteArray = decode(String(input, Charsets.US_ASCII), flags)
+    fun decode(input: ByteArray, flags: Int): ByteArray {
+        val table = if (flags and URL_SAFE != 0) DECODE_WEBSAFE else DECODE_DEFAULT
+        val out = java.io.ByteArrayOutputStream((input.size * 3) / 4 + 3)
+        var state = 0
+        var value = 0
+        var p = 0
+        val len = input.size
+        while (p < len) {
+            if (state == 0) {
+                while (p + 4 <= len) {
+                    val v = (table[input[p].toInt() and 0xFF] shl 18) or
+                        (table[input[p + 1].toInt() and 0xFF] shl 12) or
+                        (table[input[p + 2].toInt() and 0xFF] shl 6) or
+                        table[input[p + 3].toInt() and 0xFF]
+                    if (v < 0) break
+                    out.write((v shr 16) and 0xFF)
+                    out.write((v shr 8) and 0xFF)
+                    out.write(v and 0xFF)
+                    p += 4
+                }
+                if (p >= len) break
+            }
+            val d = table[input[p++].toInt() and 0xFF]
+            when (state) {
+                0 -> when {
+                    d >= 0 -> { value = d; state = 1 }
+                    d != SKIP -> throw IllegalArgumentException("bad base-64")
+                }
+                1 -> when {
+                    d >= 0 -> { value = (value shl 6) or d; state = 2 }
+                    d != SKIP -> throw IllegalArgumentException("bad base-64")
+                }
+                2 -> when {
+                    d >= 0 -> { value = (value shl 6) or d; state = 3 }
+                    d == EQUALS -> {
+                        out.write(value shr 4)
+                        state = 4
+                    }
+                    d != SKIP -> throw IllegalArgumentException("bad base-64")
+                }
+                3 -> when {
+                    d >= 0 -> {
+                        value = (value shl 6) or d
+                        out.write((value shr 16) and 0xFF)
+                        out.write((value shr 8) and 0xFF)
+                        out.write(value and 0xFF)
+                        state = 0
+                    }
+                    d == EQUALS -> {
+                        out.write((value shr 10) and 0xFF)
+                        out.write((value shr 2) and 0xFF)
+                        state = 5
+                    }
+                    d != SKIP -> throw IllegalArgumentException("bad base-64")
+                }
+                4 -> when {
+                    d == EQUALS -> state = 5
+                    d != SKIP -> throw IllegalArgumentException("bad base-64")
+                }
+                5 -> if (d != SKIP) throw IllegalArgumentException("bad base-64")
+            }
+        }
+        when (state) {
+            0, 5 -> Unit
+            1 -> throw IllegalArgumentException("bad base-64")
+            2 -> out.write(value shr 4)
+            3 -> {
+                out.write((value shr 10) and 0xFF)
+                out.write((value shr 2) and 0xFF)
+            }
+            4 -> throw IllegalArgumentException("bad base-64")
+        }
+        return out.toByteArray()
+    }
+
+    private const val SKIP = -1
+    private const val EQUALS = -2
+
+    private val DECODE_DEFAULT = IntArray(256) { SKIP }.apply {
+        for (i in 'A'.code..'Z'.code) this[i] = i - 'A'.code
+        for (i in 'a'.code..'z'.code) this[i] = i - 'a'.code + 26
+        for (i in '0'.code..'9'.code) this[i] = i - '0'.code + 52
+        this['+'.code] = 62
+        this['/'.code] = 63
+        this['='.code] = EQUALS
+    }
+
+    private val DECODE_WEBSAFE = IntArray(256) { SKIP }.apply {
+        for (i in 'A'.code..'Z'.code) this[i] = i - 'A'.code
+        for (i in 'a'.code..'z'.code) this[i] = i - 'a'.code + 26
+        for (i in '0'.code..'9'.code) this[i] = i - '0'.code + 52
+        this['-'.code] = 62
+        this['_'.code] = 63
+        this['='.code] = EQUALS
+    }
 }

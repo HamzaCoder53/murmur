@@ -33,6 +33,13 @@ object ShimRuntime {
     fun requireDataDir(): File =
         checkNotNull(dataDir) { "ShimRuntime.dataDir is not set; call DesktopPlatform.install() first" }
             .apply { mkdirs() }
+
+    /** Test & smoke hook: flush async apply() writes and clear in-memory preference caches. */
+    fun resetCachesForTests() {
+        FileSharedPreferences.flushPendingWrites()
+        android.content.Context.resetCacheForTests()
+        androidx.security.crypto.EncryptedSharedPreferences.resetCacheForTests()
+    }
 }
 
 /**

@@ -1,5 +1,6 @@
 package com.bitchat.desktop.core
 
+import com.bitchat.android.favorites.FavoritesPersistenceService
 import com.bitchat.android.mesh.DirectLinkAnnouncementPolicy
 import com.bitchat.android.mesh.MeshCore
 import com.bitchat.android.mesh.MeshDelegate
@@ -8,6 +9,8 @@ import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.sync.GossipSyncManager
 import com.bitchat.android.util.AppConstants
+import java.util.Date
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -40,6 +43,10 @@ class DesktopMeshNode(
 
     val peerID: String get() = identity.peerID
 
+    init {
+        FavoritesPersistenceService.initialize(identity.context)
+    }
+
     private val core: MeshCore = MeshCore(
         context = identity.context,
         scope = scope,
@@ -58,6 +65,7 @@ class DesktopMeshNode(
                 // Only a validated full-TTL announce marks a peer as directly connected.
                 DirectLinkAnnouncementPolicy.observationFor(routed, maxTtl)?.let { obs ->
                     core.setDirectConnection(obs.peerID, true)
+                    core.gossipSyncManager.scheduleInitialSyncToPeer(obs.peerID, 1_000)
                 }
             },
             announcementNicknameProvider = { identity.nickname },
@@ -68,8 +76,7 @@ class DesktopMeshNode(
     init {
         core.delegate = object : MeshDelegate {
             override fun didReceiveMessage(message: BitchatMessage) {
-                if (message.isPrivate) _privateMessages.update { it + message }
-                else _publicMessages.update { it + message }
+                if (message.isPrivate) appendPrivate(message) else appendPublic(message)
             }
 
             override fun didUpdatePeerList(peers: List<String>) {
@@ -93,14 +100,51 @@ class DesktopMeshNode(
     fun start() {
         core.startCore()
         core.sendBroadcastAnnounce()
+        core.gossipSyncManager.scheduleInitialSync(1_500)
     }
 
     fun announce() = core.sendBroadcastAnnounce()
 
-    fun sendPublic(text: String) = core.sendMessage(text)
+    fun sendPublic(text: String) {
+        if (text.isEmpty()) return
+        val local = BitchatMessage(
+            id = UUID.randomUUID().toString(),
+            sender = identity.nickname,
+            content = text,
+            timestamp = Date(),
+            isPrivate = false,
+            senderPeerID = identity.peerID,
+        )
+        appendPublic(local)
+        core.sendMessage(text)
+    }
 
-    fun sendPrivate(text: String, recipientPeerID: String, recipientNickname: String) =
+    fun sendPrivate(text: String, recipientPeerID: String, recipientNickname: String) {
+        if (text.isEmpty()) return
+        val local = BitchatMessage(
+            id = UUID.randomUUID().toString(),
+            sender = identity.nickname,
+            content = text,
+            timestamp = Date(),
+            isPrivate = true,
+            recipientNickname = recipientNickname,
+            senderPeerID = identity.peerID,
+        )
+        appendPrivate(local)
         core.sendPrivateMessage(text, recipientPeerID, recipientNickname)
+    }
+
+    private fun appendPublic(message: BitchatMessage) {
+        _publicMessages.update { list ->
+            if (list.any { it.id == message.id }) list else (list + message).takeLast(MAX_MESSAGES)
+        }
+    }
+
+    private fun appendPrivate(message: BitchatMessage) {
+        _privateMessages.update { list ->
+            if (list.any { it.id == message.id }) list else (list + message).takeLast(MAX_MESSAGES)
+        }
+    }
 
     fun initiateHandshake(peerID: String) = core.initiateNoiseHandshake(peerID)
 
@@ -116,6 +160,8 @@ class DesktopMeshNode(
     }
 
     companion object {
+        private const val MAX_MESSAGES = 1_000
+
         fun overLoopback(identity: DesktopIdentity, hub: LoopbackHub): Pair<DesktopMeshNode, LoopbackTransport> {
             val transport = hub.endpoint(identity.peerID)
             val node = DesktopMeshNode(identity, transport)

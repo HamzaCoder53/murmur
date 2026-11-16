@@ -4,6 +4,7 @@ import android.content.Context
 import com.bitchat.desktop.platform.AppPaths
 import com.bitchat.desktop.platform.DesktopPlatform
 import com.bitchat.desktop.platform.InMemoryKeyStore
+import com.bitchat.desktop.shim.ShimRuntime
 import java.io.File
 import java.nio.file.Files
 
@@ -22,6 +23,7 @@ class TestDevices : AutoCloseable {
     fun context(name: String): Context = Context(File(root, name).apply { mkdirs() })
 
     override fun close() {
+        ShimRuntime.resetCachesForTests()
         root.deleteRecursively()
     }
 }

@@ -39,8 +39,12 @@ object NoopAutostartController : AutostartController {
 
 object NoopCrashReporter : CrashReporter {
     override val isEnabled: Boolean = false
-    override fun init(release: String) = Unit
-    override fun capture(throwable: Throwable) = Unit
+    override fun setEnabled(enabled: Boolean) = Unit
+    override fun init(release: String, environment: String) = Unit
+    override fun addBreadcrumb(category: String, message: String) = Unit
+    override fun capture(throwable: Throwable, context: Map<String, String>) = Unit
+    override fun flush(timeoutMs: Long) = Unit
+    override fun close() = Unit
 }
 
 /** Keys held in memory only: tests and the headless smoke run. */
@@ -62,15 +66,16 @@ class FileKeyStore(private val dir: File) : SecureKeyStore {
 
     override fun getOrCreateKey(alias: String): ByteArray = synchronized(lock) {
         val file = fileFor(alias)
-        if (file.isFile) {
+        if (file.exists()) {
             val bytes = file.readBytes()
-            if (bytes.size == 32) return bytes
+            check(bytes.size == 32) {
+                "Malformed key file for alias '$alias' (${bytes.size} bytes; expected 32)"
+            }
+            return bytes
         }
-        dir.mkdirs()
-        OwnerOnlyFiles.restrict(dir)
+        OwnerOnlyFiles.ensureDir(dir)
         val key = ByteArray(32).also(SecureRandom()::nextBytes)
-        file.writeBytes(key)
-        OwnerOnlyFiles.restrict(file)
+        OwnerOnlyFiles.writeAtomically(file, key)
         key
     }
 

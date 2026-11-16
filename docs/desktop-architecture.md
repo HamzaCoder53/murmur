@@ -171,8 +171,10 @@ tasks when regenerating:
 1. **macOS BLE helper.** A small Swift command-line helper (CoreBluetooth `CBCentralManager` +
    `CBPeripheralManager`, Bitchat service/characteristic UUIDs) bundled inside the app and spoken
    to over stdio with newline-delimited JSON:
-   `{"op":"start"}`, `{"ev":"linkUp","link":"<opaque>","rssi":-60}`, `{"ev":"frame","link":..,"b64":..}`,
-   `{"op":"send","link":..,"b64":..}`, `{"ev":"linkDown",..}`, `{"ev":"state","powered":true}`.
+   `{"op":"start"}`, `{"ev":"linkUp","link":"<opaque>","rssi":-60,"mtu":185,"role":"central"}`,
+   `{"ev":"linkUpdated","link":"<opaque>","mtu":247}`, `{"ev":"frame","link":..,"b64":..}`,
+   `{"op":"send","link":..,"b64":..}`, `{"ev":"linkDown",..}`,
+   `{"ev":"state","state":"ready"}`, `{"ev":"error","message":"..."}`.
    Links are opaque random IDs (never hardware addresses). The Kotlin side implements
    `BleTransport` + a `MeshTransport` that reuses `FragmentingPacketSender` and the BLE padding
    policy. Needs `NSBluetoothAlwaysUsageDescription`, hardened runtime, and notarization.
@@ -183,10 +185,14 @@ tasks when regenerating:
 3. **Persistence and UI parity.** Real conversation store (see AppStateStore row), Keychain/DPAPI
    `SecureKeyStore`, desktop Nostr relay client after the app/ seams, LAN mesh via
    `LocalDiscovery`, linked devices (pair a desktop with a phone using the 6-digit code), and the
-   desktop UI (chats, peers, verification, settings).
+   desktop UI (chats, peers, verification, settings). Note: `org.json:json` on JVM uses hash-ordered
+   keys whereas Android's `org.json` preserves insertion order; serialized JSON must never be
+   signed or MACed directly.
 4. **Tray / menu bar, autostart, notifications, crash reporting** through the platform interfaces.
-5. **Packaging + CI.** Compose Desktop native distributions: DMG (signed + notarized; arm64 and
-   x64 builds) and MSI (signed; x64 and arm64), each bundling only its own skiko runtime and BLE
-   helper. GitHub Actions matrix on `macos-14` (arm64), `macos-13` (x64), `windows-latest` (x64)
-   and `windows-11-arm` (arm64) running `:desktop:test` and the package tasks, with pinned action
-   SHAs and the same lock/verification policy as the Android builds.
+5. **Packaging + CI.** Compose Desktop native distributions: DMG (arm64 and x64 builds) and MSI
+   (x64 and arm64), each bundling only its own skiko runtime via `-PskeinTarget=` and BLE helper.
+   Windows CI provides a checksum-verified WiX toolset via `WIX_PATH` (`downloadWix=false`) so
+   packaging never fetches unverified binaries. GitHub Actions matrix on `macos-14` (arm64),
+   `macos-15-intel` (x64), `windows-latest` (x64) and `windows-11-arm` (arm64) running `:desktop:test`
+   and the package tasks, with pinned action SHAs and the same lock/verification policy as the
+   Android builds.

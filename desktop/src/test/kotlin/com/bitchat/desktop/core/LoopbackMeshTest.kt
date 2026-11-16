@@ -60,8 +60,25 @@ class LoopbackMeshTest {
         assertEquals("alice", received.sender)
         assertEquals(alice.peerID, received.senderPeerID)
         assertFalse(received.isPrivate)
-        // The sender never receives its own broadcast back over the link.
-        assertTrue(alice.publicMessages.value.none { it.content == "synthetic public hello" })
+        // The sender records its own outgoing message once in its local timeline.
+        assertEquals(1, alice.publicMessages.value.count { it.content == "synthetic public hello" })
+    }
+
+    @Test
+    fun `late joiner receives earlier public message via gossip sync`() = runBlocking {
+        alice.sendPublic("synthetic earlier message")
+
+        val charlieId = DesktopIdentity.loadOrCreate(devices.context("charlie")).apply { nickname = "charlie" }
+        val (charlie, charlieTransport) = DesktopMeshNode.overLoopback(charlieId, hub)
+        transports += charlieTransport
+        charlie.start()
+        try {
+            awaitPeer(charlie, alice.peerID)
+            val synced = awaitMessage(charlie.publicMessages) { it.content == "synthetic earlier message" }
+            assertEquals(alice.peerID, synced.senderPeerID)
+        } finally {
+            charlie.stop()
+        }
     }
 
     @Test

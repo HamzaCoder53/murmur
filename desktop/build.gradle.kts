@@ -134,6 +134,10 @@ val syncSharedAppTests = tasks.register<Sync>("syncSharedAppTests") {
             "com/bitchat/android/mesh/BLEPacketPaddingPolicyTest.kt",
             "com/bitchat/android/mesh/FragmentManagerTest.kt",
             "com/bitchat/android/mesh/FragmentingPacketSenderTest.kt",
+            "com/bitchat/android/favorites/FavoriteRelationshipTest.kt",
+            "com/bitchat/android/nostr/Bech32PaddingTest.kt",
+            "com/bitchat/android/nostr/NostrLiveSubscriptionPrivacyTest.kt",
+            "com/bitchat/android/spam/SpamFilterTest.kt",
         )
     }
     from("../app/src/test/kotlin") {
@@ -143,8 +147,21 @@ val syncSharedAppTests = tasks.register<Sync>("syncSharedAppTests") {
             "com/bitchat/android/backup/SkeinBackupTest.kt",
             "com/bitchat/android/sync/GCSFilterTest.kt",
             "com/bitchat/android/sync/GCSFilterParameterTest.kt",
+            "com/bitchat/android/sync/GossipSyncLoadTest.kt",
             "com/bitchat/android/mesh/DirectLinkAnnouncementPolicyTest.kt",
             "com/bitchat/android/mesh/RetryingControlPacketSenderTest.kt",
+            "com/bitchat/android/mesh/AuthenticatedPeerStateCoordinatorTest.kt",
+            "com/bitchat/android/mesh/PacketProcessorAnnounceSideEffectTest.kt",
+            "com/bitchat/android/mesh/PrivateMediaSecurityTest.kt",
+            "com/bitchat/android/model/AuthenticatedPeerStateTest.kt",
+            "com/bitchat/android/model/IdentityAnnouncementTest.kt",
+            "com/bitchat/android/nostr/NostrEventDeduplicatorTest.kt",
+            "com/bitchat/android/nostr/NostrPendingEventQueueTest.kt",
+            "com/bitchat/android/nostr/NostrProtocolTest.kt",
+            "com/bitchat/android/nostr/RelayReconnectPolicyTest.kt",
+            "com/bitchat/android/nostr/VerifiedEventFilterTest.kt",
+            "com/bitchat/android/services/meshgraph/MeshGraphServiceTest.kt",
+            "com/bitchat/android/services/PeerConversationReconcilerTest.kt",
         )
     }
     into(layout.buildDirectory.dir("sharedTestSrc"))
@@ -182,13 +199,15 @@ composeCompiler {
 dependencies {
     // Compose for Desktop. Every supported OS/arch runtime is declared explicitly (instead of
     // compose.desktop.currentOs) so that the strict lockfile and checksum metadata are the same
-    // on every build host; packaging trims the foreign natives in a later stage.
+    // on every build host; packaging passes -PskeinTarget=<macos_arm64|macos_x64|windows_x64|windows_arm64>
+    // to bundle only the target's native runtime.
     implementation(compose.desktop.common)
     implementation(compose.material3)
-    runtimeOnly(compose.desktop.macos_arm64)
-    runtimeOnly(compose.desktop.macos_x64)
-    runtimeOnly(compose.desktop.windows_x64)
-    runtimeOnly(compose.desktop.windows_arm64)
+    val skeinTarget = providers.gradleProperty("skeinTarget").orNull
+    if (skeinTarget == null || skeinTarget == "macos_arm64") runtimeOnly(compose.desktop.macos_arm64)
+    if (skeinTarget == null || skeinTarget == "macos_x64") runtimeOnly(compose.desktop.macos_x64)
+    if (skeinTarget == null || skeinTarget == "windows_x64") runtimeOnly(compose.desktop.windows_x64)
+    if (skeinTarget == null || skeinTarget == "windows_arm64") runtimeOnly(compose.desktop.windows_arm64)
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.swing)
@@ -214,7 +233,28 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi)
             packageName = "Skein"
-            packageVersion = "1.0.0"
+            packageVersion = providers.gradleProperty("skeinDesktopVersion").getOrElse("1.0.0")
+            macOS {
+                bundleID = "xfuturehb.murmur.desktop"
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>NSBluetoothAlwaysUsageDescription</key>
+                        <string>Skein uses Bluetooth Low Energy to discover and message nearby peers without internet.</string>
+                    """.trimIndent()
+                }
+            }
+            windows {
+                upgradeUuid = "b9e2c4a1-7d3f-4c8b-9a2e-1f6d8c3e5a7b"
+                menuGroup = "Skein"
+            }
+        }
+    }
+}
+
+tasks.matching { it.name.startsWith("package") }.configureEach {
+    doFirst {
+        check(System.getProperty("skein.allowInsecureKeyStore")?.toBoolean() != true) {
+            "Refusing to package Skein with -Dskein.allowInsecureKeyStore=true"
         }
     }
 }

@@ -28,10 +28,30 @@ class DesktopPlatform(
     }
 
     companion object {
-        /** The platform for a normal run. Real OS integrations replace the no-ops in later stages. */
+        const val ALLOW_INSECURE_KEYSTORE_PROP = "skein.allowInsecureKeyStore"
+
+        /**
+         * The platform for a normal run. Real OS integrations (Keychain/DPAPI, BLE helpers, tray)
+         * replace the no-ops in later stages. Never persists plaintext keys by default: uses
+         * [InMemoryKeyStore] unless `-Dskein.allowInsecureKeyStore=true` is explicitly set for dev.
+         */
         fun forCurrentHost(dataDirOverride: File? = null): DesktopPlatform {
             val paths = AppPaths.forCurrentHost(dataDirOverride)
-            return DesktopPlatform(paths = paths, keyStore = FileKeyStore(paths.secretsDir))
+            val allowInsecure = System.getProperty(ALLOW_INSECURE_KEYSTORE_PROP)?.toBoolean() == true
+            val keyStore = if (allowInsecure) {
+                android.util.Log.w(
+                    "DesktopPlatform",
+                    "Using insecure FileKeyStore under ${paths.secretsDir.name} (dev opt-in via -D$ALLOW_INSECURE_KEYSTORE_PROP=true)",
+                )
+                FileKeyStore(paths.secretsDir)
+            } else {
+                android.util.Log.w(
+                    "DesktopPlatform",
+                    "OS Keychain/DPAPI not yet wired; using InMemoryKeyStore (keys are not persisted across restarts)",
+                )
+                InMemoryKeyStore()
+            }
+            return DesktopPlatform(paths = paths, keyStore = keyStore)
         }
     }
 }
@@ -54,31 +74,41 @@ enum class HostOs { MAC, WINDOWS, OTHER;
 // ---------------------------------------------------------------------------------------------
 
 /** Per-user storage locations. Nothing outside [dataDir] is ever written. */
-data class AppPaths(val dataDir: File) {
-    val secretsDir: File get() = File(dataDir, "secrets")
-    val logsDir: File get() = File(dataDir, "logs")
+data class AppPaths(val dataDir: File, val localDataDir: File = dataDir) {
+    val secretsDir: File get() = File(localDataDir, "secrets")
+    val logsDir: File get() = File(localDataDir, "logs")
 
     companion object {
         const val APP_DIR_NAME = "Skein"
 
         /**
-         * macOS: ~/Library/Application Support/Skein. Windows: %APPDATA%\Skein (roaming profile is
-         * avoided for keys in a later stage by moving secrets to %LOCALAPPDATA%). Other: XDG data.
-         * `-Dskein.dataDir=...` or [override] wins (tests, portable installs).
+         * macOS: ~/Library/Application Support/Skein.
+         * Windows: %APPDATA%\Skein for general data, %LOCALAPPDATA%\Skein for secrets/logs
+         * (avoiding roaming profile sync).
+         * Other: XDG data. `-Dskein.dataDir=...` or [override] wins (tests, portable installs).
          */
         fun forCurrentHost(override: File? = null): AppPaths {
             override?.let { return AppPaths(it) }
             System.getProperty("skein.dataDir")?.takeIf { it.isNotBlank() }?.let { return AppPaths(File(it)) }
             val home = File(System.getProperty("user.home"))
-            val dir = when (HostOs.current()) {
-                HostOs.MAC -> File(home, "Library/Application Support/$APP_DIR_NAME")
-                HostOs.WINDOWS -> File(System.getenv("APPDATA")?.takeIf { it.isNotBlank() } ?: home.path, APP_DIR_NAME)
-                HostOs.OTHER -> File(
-                    System.getenv("XDG_DATA_HOME")?.takeIf { it.isNotBlank() } ?: File(home, ".local/share").path,
-                    APP_DIR_NAME.lowercase(),
-                )
+            return when (HostOs.current()) {
+                HostOs.MAC -> {
+                    val dir = File(home, "Library/Application Support/$APP_DIR_NAME")
+                    AppPaths(dir, dir)
+                }
+                HostOs.WINDOWS -> {
+                    val roaming = File(System.getenv("APPDATA")?.takeIf { it.isNotBlank() } ?: home.path, APP_DIR_NAME)
+                    val local = File(System.getenv("LOCALAPPDATA")?.takeIf { it.isNotBlank() } ?: roaming.path, APP_DIR_NAME)
+                    AppPaths(roaming, local)
+                }
+                HostOs.OTHER -> {
+                    val dir = File(
+                        System.getenv("XDG_DATA_HOME")?.takeIf { it.isNotBlank() } ?: File(home, ".local/share").path,
+                        APP_DIR_NAME.lowercase(),
+                    )
+                    AppPaths(dir, dir)
+                }
             }
-            return AppPaths(dir)
         }
     }
 }
@@ -102,11 +132,24 @@ interface SecureKeyStore {
 // ---------------------------------------------------------------------------------------------
 
 /** A BLE link to a nearby device; [linkId] is opaque and never a hardware address. */
-data class BleLink(val linkId: String, val rssi: Int?)
+data class BleLink(
+    val linkId: String,
+    val rssi: Int?,
+    val mtu: Int = DEFAULT_MTU,
+    val role: Role = Role.CENTRAL,
+) {
+    enum class Role { CENTRAL, PERIPHERAL }
+    companion object {
+        const val DEFAULT_MTU = 23
+    }
+}
+
+enum class BleState { UNSUPPORTED, UNAUTHORIZED, POWERED_OFF, READY, HELPER_CRASHED }
 
 interface BleTransport {
     /** Whether the OS radio supports both roles (scan/connect and advertise/GATT server). */
     val isAvailable: Boolean
+    val state: BleState get() = if (isAvailable) BleState.READY else BleState.UNSUPPORTED
     fun start(listener: Listener)
     fun stop()
     /** Writes one already-encoded (and, if needed, fragmented) packet to a link. */
@@ -115,8 +158,11 @@ interface BleTransport {
 
     interface Listener {
         fun onLinkUp(link: BleLink)
+        fun onLinkUpdated(link: BleLink) = Unit
         fun onLinkDown(linkId: String)
         fun onFrame(linkId: String, frame: ByteArray)
+        fun onStateChanged(state: BleState) = Unit
+        fun onError(message: String) = Unit
     }
 }
 
@@ -157,6 +203,10 @@ interface AutostartController {
 /** Opt-in crash reporting. Implementations must scrub peer IDs, keys, paths and message text. */
 interface CrashReporter {
     val isEnabled: Boolean
-    fun init(release: String)
-    fun capture(throwable: Throwable)
+    fun setEnabled(enabled: Boolean)
+    fun init(release: String, environment: String = "production")
+    fun addBreadcrumb(category: String, message: String)
+    fun capture(throwable: Throwable, context: Map<String, String> = emptyMap())
+    fun flush(timeoutMs: Long = 2_000)
+    fun close()
 }

@@ -55,15 +55,29 @@ object AppStateStore {
 
     fun hasSeenMessage(messageID: String): Boolean = synchronized(this) { messageID in seenMessageIds }
 
-    fun addPublicMessage(msg: BitchatMessage) = synchronized(this) {
-        if (!seenMessageIds.add(msg.id)) return
-        _publicMessages.value = (_publicMessages.value + msg).takeLast(MAX_PUBLIC_TIMELINE_MESSAGES)
+    private fun markSeen(messageID: String): Boolean {
+        if (!seenMessageIds.add(messageID)) return false
+        while (seenMessageIds.size > MAX_SEEN_MESSAGE_IDS) {
+            val it = seenMessageIds.iterator()
+            if (it.hasNext()) {
+                it.next()
+                it.remove()
+            } else break
+        }
+        return true
+    }
+
+    fun addPublicMessage(msg: BitchatMessage) {
+        synchronized(this) {
+            if (!markSeen(msg.id)) return
+            _publicMessages.value = (_publicMessages.value + msg).takeLast(MAX_PUBLIC_TIMELINE_MESSAGES)
+        }
     }
 
     fun addPrivateMessage(peerID: String, msg: BitchatMessage, forceRead: Boolean = false): Boolean = synchronized(this) {
-        if (!seenMessageIds.add(msg.id)) return false
+        if (!markSeen(msg.id)) return false
         val map = _privateMessages.value.toMutableMap()
-        map[peerID] = (map[peerID] ?: emptyList()) + msg
+        map[peerID] = ((map[peerID] ?: emptyList()) + msg).takeLast(MAX_PRIVATE_MESSAGES_PER_PEER)
         _privateMessages.value = map
         if (forceRead) _readPrivateMessageIDs.value = _readPrivateMessageIDs.value + msg.id
         true
@@ -123,4 +137,6 @@ object AppStateStore {
     }
 
     const val MAX_PUBLIC_TIMELINE_MESSAGES = 1_000
+    const val MAX_PRIVATE_MESSAGES_PER_PEER = 1_000
+    const val MAX_SEEN_MESSAGE_IDS = 10_000
 }

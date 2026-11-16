@@ -11,9 +11,11 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.security.GeneralSecurityException
 
 class AndroidShimTest {
     private val devices = TestDevices()
@@ -86,16 +88,55 @@ class AndroidShimTest {
         )
         assertEquals("synthetic-secret-value", again.getString("synthetic_secret_name", null))
 
-        // Different key: nothing is returned (authentication fails, store starts empty).
+        // Different key: throws GeneralSecurityException and moves the original .enc aside so
+        // it cannot be overwritten with a fresh empty store.
         EncryptedSharedPreferences.resetCacheForTests()
         ShimRuntime.masterKeyProvider = MasterKeyProvider { ByteArray(32) { 1 } }
-        val wrong = EncryptedSharedPreferences.create(
-            ctx, "secure", key,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-        )
-        assertNull(wrong.getString("synthetic_secret_name", null))
+        assertThrows(GeneralSecurityException::class.java) {
+            EncryptedSharedPreferences.create(
+                ctx, "secure", key,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+            )
+        }
+        assertFalse(file.exists())
+        assertTrue(file.parentFile.listFiles().orEmpty().any { it.name.startsWith("secure.enc.corrupt-") })
         EncryptedSharedPreferences.resetCacheForTests()
+    }
+
+    @Test
+    fun `Base64 decode matches Android lenient non-alphabet skipping and strict padding`() {
+        assertArrayEquals("hi".toByteArray(), Base64.decode("a!G?k=", Base64.DEFAULT))
+        assertArrayEquals("hi".toByteArray(), Base64.decode("aGk=\r\n", Base64.DEFAULT))
+        assertThrows(IllegalArgumentException::class.java) { Base64.decode("QQ=", Base64.DEFAULT) }
+        assertThrows(IllegalArgumentException::class.java) { Base64.decode("aGk=aGk=", Base64.DEFAULT) }
+    }
+
+    @Test
+    fun `Uri decode replaces invalid percent escapes with U+FFFD like Android`() {
+        val parsed = Uri.parse("skein://host?nick=%E&bad=%zz&plus=a+b")
+        assertEquals("\uFFFDE", parsed.getQueryParameter("nick"))
+        assertEquals("\uFFFDzz", parsed.getQueryParameter("bad"))
+        assertEquals("a+b", parsed.getQueryParameter("plus"))
+    }
+
+    @Test
+    fun `FileSharedPreferences throws ClassCastException on type mismatch and survives corrupt json`() {
+        val ctx = devices.context("prefs-edge")
+        val prefs = ctx.getSharedPreferences("edge", Context.MODE_PRIVATE)
+        prefs.edit().putInt("num", 42).putFloat("nan", Float.NaN).commit()
+        assertThrows(ClassCastException::class.java) { prefs.getString("num", null) }
+        assertTrue(prefs.getFloat("nan", 0f).isNaN())
+
+        val clearedKeys = mutableListOf<String?>()
+        prefs.registerOnSharedPreferenceChangeListener { _, k -> clearedKeys += k }
+        prefs.edit().clear().commit()
+        assertTrue("num" in clearedKeys && "nan" in clearedKeys)
+
+        Context.prefsCache.clear()
+        File(ctx.prefsDir(), "edge.json").writeText("{not valid json")
+        val recovered = ctx.getSharedPreferences("edge", Context.MODE_PRIVATE)
+        assertTrue(recovered.all.isEmpty())
     }
 
     @Test

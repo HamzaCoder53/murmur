@@ -37,6 +37,9 @@ object EncryptedSharedPreferences {
         @Suppress("UNUSED_PARAMETER") keyScheme: PrefKeyEncryptionScheme,
         @Suppress("UNUSED_PARAMETER") valueScheme: PrefValueEncryptionScheme,
     ): SharedPreferences {
+        require(fileName.isNotEmpty() && '/' !in fileName && '\\' !in fileName && fileName != "." && fileName != "..") {
+            "Invalid EncryptedSharedPreferences fileName: $fileName"
+        }
         val file = File(context.prefsDir(), "$fileName.enc")
         return cache.getOrPut(file.canonicalPath) {
             val key = ShimRuntime.masterKeyProvider.getOrCreateKey(masterKey.alias)

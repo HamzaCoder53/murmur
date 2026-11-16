@@ -30,10 +30,15 @@ open class Context(rootDir: File? = null) {
     open val packageName: String
         get() = "xfuturehb.murmur"
 
-    open fun getSharedPreferences(name: String, mode: Int): SharedPreferences =
-        prefsCache.getOrPut(File(prefsDir(), "$name.json").canonicalPath) {
-            FileSharedPreferences(File(prefsDir(), "$name.json"), codec = null)
+    open fun getSharedPreferences(name: String, mode: Int): SharedPreferences {
+        require(name.isNotEmpty() && '/' !in name && '\\' !in name && name != "." && name != "..") {
+            "Invalid SharedPreferences name: $name"
         }
+        val file = File(prefsDir(), "$name.json")
+        return prefsCache.getOrPut(file.canonicalPath) {
+            FileSharedPreferences(file, codec = null)
+        }
+    }
 
     fun prefsDir(): File = File(rootDir, "shared_prefs").apply { mkdirs() }
 
@@ -42,5 +47,7 @@ open class Context(rootDir: File? = null) {
 
         // One instance per backing file, like Android, so listeners and in-memory state agree.
         internal val prefsCache = ConcurrentHashMap<String, SharedPreferences>()
+
+        fun resetCacheForTests() = prefsCache.clear()
     }
 }
