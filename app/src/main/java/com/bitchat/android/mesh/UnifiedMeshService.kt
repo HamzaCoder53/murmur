@@ -3,6 +3,7 @@ package com.bitchat.android.mesh
 import android.content.Context
 import android.util.Log
 import com.bitchat.android.favorites.FavoriteControlMessage
+import com.bitchat.android.lan.LanController
 import com.bitchat.android.model.BitchatFilePacket
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.noise.NoiseSession
@@ -68,6 +69,10 @@ class UnifiedMeshService(
         try { WearLinkController.startIfPossible(context) } catch (e: Exception) {
             Log.w(TAG, "Failed to start watch link transport: ${e.message}")
         }
+        // No-op unless the user turned on the local Wi-Fi mesh and granted its permission.
+        try { LanController.startIfPossible(context) } catch (e: Exception) {
+            Log.w(TAG, "Failed to start local Wi-Fi transport: ${e.message}")
+        }
         startAnnouncementScheduler()
         refreshDelegates()
     }
@@ -78,6 +83,7 @@ class UnifiedMeshService(
         try { bluetooth.stopServices() } catch (_: Exception) { }
         try { WifiAwareController.stop() } catch (_: Exception) { }
         try { WearLinkController.stop() } catch (_: Exception) { }
+        try { LanController.stop() } catch (_: Exception) { }
     }
 
     private fun startAnnouncementScheduler() {
@@ -441,12 +447,13 @@ class UnifiedMeshService(
     }
 
     /**
-     * Wi-Fi Aware and the paired-watch link, presented as one secondary transport so the
-     * BLE-versus-other selection below stays a two-way choice. See [SecondaryMeshService].
+     * Wi-Fi Aware, the local Wi-Fi mesh and the paired-watch link, presented as one secondary
+     * transport so the BLE-versus-other selection below stays a two-way choice. See [SecondaryMeshService].
      */
     private val secondaryTransports = SecondaryMeshService(
         wifi = { WifiAwareController.getService() },
-        wear = { WearLinkController.getService() }
+        wear = { WearLinkController.getService() },
+        lan = { LanController.getService() }
     )
 
     private fun wifiService(): MeshService? {

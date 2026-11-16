@@ -8,8 +8,8 @@ import com.bitchat.android.model.BitchatFilePacket
 import com.bitchat.android.noise.NoiseSession
 
 /**
- * Presents the non-BLE transports (Wi-Fi Aware and the watch link) to UnifiedMeshService as one
- * secondary [MeshService].
+ * Presents the non-BLE transports (Wi-Fi Aware, the local Wi-Fi mesh and the watch link) to
+ * UnifiedMeshService as one secondary [MeshService].
  *
  * UnifiedMeshService was written to choose between exactly two transports, BLE and "the other
  * one". Folding the watch link in here keeps that file's per-peer selection logic untouched: this
@@ -20,13 +20,14 @@ import com.bitchat.android.noise.NoiseSession
  */
 class SecondaryMeshService(
     private val wifi: () -> MeshService?,
-    private val wear: () -> MeshService?
+    private val wear: () -> MeshService?,
+    private val lan: () -> MeshService? = { null }
 ) : MeshService {
 
     /** The watch link first: a peer bound to it is one hop away and always reachable there. */
-    private fun all(): List<MeshService> = listOfNotNull(wear(), wifi())
+    private fun all(): List<MeshService> = listOfNotNull(wear(), wifi(), lan())
 
-    fun hasAny(): Boolean = wear() != null || wifi() != null
+    fun hasAny(): Boolean = wear() != null || wifi() != null || lan() != null
 
     /**
      * The transport to use for [peerID]: one with a live session, else one that at least sees the
@@ -38,6 +39,7 @@ class SecondaryMeshService(
         return services.firstOrNull { it.isConnectedTo(peerID) && it.hasEstablishedSession(peerID) }
             ?: services.firstOrNull { it.isConnectedTo(peerID) }
             ?: wifi()
+            ?: lan()
             ?: wear()
     }
 
@@ -45,7 +47,7 @@ class SecondaryMeshService(
         try { getPeerInfo(peerID)?.isConnected == true } catch (_: Exception) { false }
 
     /** Broadcast-style sends start on one transport; the bridge carries them to the rest. */
-    private fun origin(): MeshService? = wifi() ?: wear()
+    private fun origin(): MeshService? = wifi() ?: lan() ?: wear()
 
     override val myPeerID: String
         get() = all().firstOrNull()?.myPeerID.orEmpty()

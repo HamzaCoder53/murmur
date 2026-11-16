@@ -682,4 +682,7 @@
   <string name="watch_link_big_text">%1$s wants to use this phone\'s Skein identity. It will be able to read and send your messages, including when away from the phone. Only allow this for your own watch.</string>
   <string name="watch_link_deny">Deny</string>
   <string name="watch_link_allow">Allow</string>
+  <string name="lan_mesh_title" tools:ignore="MissingTranslation">Local Wi-Fi mesh</string>
+  <string name="lan_mesh_description" tools:ignore="MissingTranslation">Reach Skein users on the same Wi-Fi, even without internet. Not on public Wi-Fi.</string>
+  <string name="lan_mesh_permission_denied" tools:ignore="MissingTranslation">Local Wi-Fi mesh needs the local network permission</string>
 </resources>

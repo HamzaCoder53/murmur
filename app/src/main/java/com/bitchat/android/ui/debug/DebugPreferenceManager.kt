@@ -24,6 +24,7 @@ object DebugPreferenceManager {
     private const val KEY_BLE_ENABLED = "ble_enabled"
     private const val KEY_WIFI_AWARE_ENABLED = "wifi_aware_enabled"
     private const val KEY_WIFI_AWARE_VERBOSE = "wifi_aware_verbose"
+    private const val KEY_LAN_MESH_ENABLED = "lan_mesh_enabled"
 
     private lateinit var prefs: SharedPreferences
 
@@ -118,6 +119,14 @@ object DebugPreferenceManager {
 
     fun setWifiAwareEnabled(value: Boolean) {
         if (ready()) prefs.edit().putBoolean(KEY_WIFI_AWARE_ENABLED, value).apply()
+    }
+
+    /** Local Wi-Fi mesh (phone only); off by default. */
+    fun getLanMeshEnabled(default: Boolean = false): Boolean =
+        if (ready()) prefs.getBoolean(KEY_LAN_MESH_ENABLED, default) else default
+
+    fun setLanMeshEnabled(value: Boolean) {
+        if (ready()) prefs.edit().putBoolean(KEY_LAN_MESH_ENABLED, value).apply()
     }
 
     fun getWifiAwareVerbose(default: Boolean = false): Boolean =

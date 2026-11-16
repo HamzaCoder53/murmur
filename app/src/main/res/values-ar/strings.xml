@@ -414,4 +414,7 @@
   <string name="watch_link_big_text">تريد %1$s استخدام هوية Skein الخاصة بهذا الهاتف. ستتمكن من قراءة رسائلك وإرسالها، حتى بعيدًا عن الهاتف. لا تسمح بذلك إلا لساعتك أنت.</string>
   <string name="watch_link_deny">رفض</string>
   <string name="watch_link_allow">سماح</string>
+  <string name="lan_mesh_title">شبكة Wi-Fi المحلية</string>
+  <string name="lan_mesh_description">تواصَل مع مستخدمي Skein على شبكة Wi-Fi نفسها، حتى دون اتصال بالإنترنت. لا تستخدمها على شبكات Wi-Fi العامة.</string>
+  <string name="lan_mesh_permission_denied">تحتاج شبكة Wi-Fi المحلية إلى إذن الوصول إلى الشبكة المحلية</string>
 </resources>

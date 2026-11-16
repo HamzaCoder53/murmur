@@ -262,6 +262,31 @@ fun DebugSettingsSheet(
             wifiAwarePermissionLauncher.launch(missing.toTypedArray())
         }
     }
+    // Local Wi-Fi mesh: off by default; the local network permission (Android 17+) is requested
+    // only when the user turns it on, and the transport stays off without it.
+    val lanMeshEnabled by com.bitchat.android.lan.LanController.enabled.collectAsState()
+    val lanPermissionDeniedText = stringResource(R.string.lan_mesh_permission_denied)
+    val lanPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ ->
+        if (com.bitchat.android.lan.LanController.hasPermissions(context)) {
+            com.bitchat.android.lan.LanController.setEnabled(context, true)
+        } else {
+            manager.addDebugMessage(
+                DebugMessage.SystemMessage(lanPermissionDeniedText)
+            )
+        }
+    }
+    val enableLanMesh: () -> Unit = {
+        val missing = com.bitchat.android.lan.LanController.requiredPermissions().filter {
+            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) {
+            com.bitchat.android.lan.LanController.setEnabled(context, true)
+        } else {
+            lanPermissionLauncher.launch(missing.toTypedArray())
+        }
+    }
     val wifiAwareDiscovered by manager.wifiAwareDiscovered.collectAsState()
     val wifiAwareConnected by manager.wifiAwareConnected.collectAsState()
     val wifiAwareSupported by com.bitchat.android.wifiaware.WifiAwareController.supported.collectAsState()
@@ -502,6 +527,30 @@ fun DebugSettingsSheet(
                             Spacer(Modifier.width(24.dp))
                             Text("Wi‑Fi Aware verbose logging", fontFamily = BitchatFontFamily, modifier = Modifier.weight(1f))
                             Switch(checked = wifiAwareVerbose, onCheckedChange = { manager.setWifiAwareVerbose(it) })
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Wifi, contentDescription = null, tint = Color(0xFF00897B))
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(stringResource(R.string.lan_mesh_title), fontFamily = BitchatFontFamily)
+                                Text(
+                                    stringResource(R.string.lan_mesh_description),
+                                    fontFamily = BitchatFontFamily,
+                                    fontSize = 11.sp,
+                                    color = colorScheme.onSurface.copy(alpha = 0.6f)
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Switch(
+                                checked = lanMeshEnabled,
+                                onCheckedChange = { on ->
+                                    if (on) {
+                                        enableLanMesh()
+                                    } else {
+                                        com.bitchat.android.lan.LanController.setEnabled(context, false)
+                                    }
+                                }
+                            )
                         }
                     }
                 }

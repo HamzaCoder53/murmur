@@ -64,6 +64,9 @@ class BitchatApplication : Application() {
             com.bitchat.android.wifiaware.WifiAwareController.initialize(this, enabled)
         } catch (_: Exception) { }
 
+        // Local Wi-Fi mesh toggle (off by default); the mesh service starts it when enabled.
+        try { com.bitchat.android.lan.LanController.initialize() } catch (_: Exception) { }
+
         // Initialize Geohash Registries for persistence
         try {
             com.bitchat.android.nostr.GeohashAliasRegistry.initialize(this)
