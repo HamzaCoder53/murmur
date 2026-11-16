@@ -691,4 +691,6 @@
   <string name="lan_mesh_title" tools:ignore="MissingTranslation">Local Wi-Fi mesh</string>
   <string name="lan_mesh_description" tools:ignore="MissingTranslation">Reach Skein users on the same Wi-Fi, even without internet. Not on public Wi-Fi.</string>
   <string name="lan_mesh_permission_denied" tools:ignore="MissingTranslation">Local Wi-Fi mesh needs the local network permission</string>
+  <string name="about_internet_sync_title">Sync over internet</string>
+  <string name="about_internet_sync_desc">Keeps private chats in sync with other devices sharing your identity. Relays see that you send yourself something and when, not the content.</string>
 </resources>

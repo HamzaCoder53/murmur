@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
@@ -517,6 +518,7 @@ fun AboutSheet(
                         val powDifficulty by PoWPreferenceManager.powDifficulty.collectAsState()
                         val spamFilterEnabled by SpamFilterPreferences.enabled.collectAsState()
                         val saveHistoryEnabled by com.bitchat.android.services.MessageHistory.enabled.collectAsState()
+                        val internetSyncEnabled by com.bitchat.android.sync.InternetSyncPreferences.enabled.collectAsState()
                         var confirmDisableHistory by remember { mutableStateOf(false) }
                         val historyContext = androidx.compose.ui.platform.LocalContext.current
                         var backgroundEnabled by remember { mutableStateOf(com.bitchat.android.service.MeshServicePreferences.isBackgroundEnabled(true)) }
@@ -676,6 +678,24 @@ fun AboutSheet(
                                             }
                                         )
                                     }
+
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(start = 54.dp),
+                                        thickness = 1.dp,
+                                        color = colorScheme.outlineVariant
+                                    )
+
+                                    // Sync over internet toggle (disabled when Save message history is off)
+                                    SettingsToggleRow(
+                                        icon = Icons.Filled.Sync,
+                                        title = stringResource(R.string.about_internet_sync_title),
+                                        subtitle = stringResource(R.string.about_internet_sync_desc),
+                                        checked = internetSyncEnabled && saveHistoryEnabled,
+                                        enabled = saveHistoryEnabled,
+                                        onCheckedChange = { enable ->
+                                            com.bitchat.android.sync.InternetSyncPreferences.setEnabled(historyContext, enable)
+                                        }
+                                    )
 
                                     HorizontalDivider(
                                         modifier = Modifier.padding(start = 54.dp),

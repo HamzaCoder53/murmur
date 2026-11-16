@@ -423,4 +423,6 @@
   <string name="lan_mesh_title">شبكة Wi-Fi المحلية</string>
   <string name="lan_mesh_description">تواصَل مع مستخدمي Skein على شبكة Wi-Fi نفسها، حتى دون اتصال بالإنترنت. لا تستخدمها على شبكات Wi-Fi العامة.</string>
   <string name="lan_mesh_permission_denied">تحتاج شبكة Wi-Fi المحلية إلى إذن الوصول إلى الشبكة المحلية</string>
+  <string name="about_internet_sync_title">المزامنة عبر الإنترنت</string>
+  <string name="about_internet_sync_desc">تُبقي المحادثات الخاصة متزامنةً مع الأجهزة الأخرى التي تشاركك الهوية. ترى المرحّلات أنك ترسل لنفسك شيئًا ومتى، لا المحتوى.</string>
 </resources>

@@ -247,9 +247,16 @@ object AppStateStore {
     fun addPrivateMessage(
         peerID: String,
         msg: BitchatMessage,
-        forceRead: Boolean = false
+        forceRead: Boolean = false,
+        syncToInternet: Boolean = true
     ): Boolean = synchronized(this) {
-        addPrivateMessageLocked(peerID, msg, forceRead, persistAsynchronously = true)
+        addPrivateMessageLocked(
+            peerID = peerID,
+            msg = msg,
+            forceRead = forceRead,
+            persistAsynchronously = true,
+            syncToInternet = syncToInternet
+        )
     }
 
     /** Replace-or-append used by a live voice row as its partial file becomes final media. */
@@ -291,7 +298,8 @@ object AppStateStore {
     suspend fun addPrivateMessageDurably(
         peerID: String,
         msg: BitchatMessage,
-        forceRead: Boolean = false
+        forceRead: Boolean = false,
+        syncToInternet: Boolean = true
     ): Boolean {
         val persistence = synchronized(this) {
             if (privateConversationWritesSuspended) return false
@@ -312,7 +320,8 @@ object AppStateStore {
                         peerID = peerID,
                         msg = msg,
                         forceRead = forceRead,
-                        persistAsynchronously = false
+                        persistAsynchronously = false,
+                        syncToInternet = syncToInternet
                     )
                 } else {
                     false
@@ -340,7 +349,8 @@ object AppStateStore {
                 peerID = peerID,
                 msg = msg,
                 forceRead = forceRead,
-                persistAsynchronously = false
+                persistAsynchronously = false,
+                syncToInternet = syncToInternet
             )
         }
     }
@@ -349,7 +359,8 @@ object AppStateStore {
         peerID: String,
         msg: BitchatMessage,
         forceRead: Boolean,
-        persistAsynchronously: Boolean
+        persistAsynchronously: Boolean,
+        syncToInternet: Boolean = false
     ): Boolean {
         if (privateConversationWritesSuspended) return false
         if (seenMessageIds.contains(msg.id)) return false
@@ -394,6 +405,9 @@ object AppStateStore {
             )
         }
         prunePrivateMessagesLocked(conversationID)
+        if (syncToInternet && msg.sender != "system") {
+            com.bitchat.android.sync.InternetSyncBridge.onPrivateMessageAdded(peerID, msg, isRead)
+        }
         return true
     }
 
@@ -597,7 +611,7 @@ object AppStateStore {
         }
     }
 
-    fun markPrivateMessageRead(messageID: String) {
+    fun markPrivateMessageRead(messageID: String, syncToInternet: Boolean = true) {
         synchronized(this) {
             if (privateConversationWritesSuspended) return
             if (messageID in _readPrivateMessageIDs.value) return
@@ -615,6 +629,12 @@ object AppStateStore {
                 _unreadPrivateMessageCounts.value = counts
             }
             conversationRepository?.markRead(messageID)
+            if (syncToInternet) {
+                com.bitchat.android.sync.InternetSyncBridge.onPrivateMessageRead(
+                    conversationID = conversationID.orEmpty(),
+                    messageID = messageID
+                )
+            }
         }
     }
 
@@ -623,7 +643,8 @@ object AppStateStore {
 
     suspend fun setPrivateConversationRead(
         conversationID: String,
-        isRead: Boolean
+        isRead: Boolean,
+        syncToInternet: Boolean = true
     ): Boolean {
         val canonicalID = ContactDirectory.canonicalConversationId(conversationID)
         val repository = conversationRepository ?: return false
@@ -653,6 +674,9 @@ object AppStateStore {
                         _unreadPrivateMessageCounts.value + (canonicalID to 1)
                 }
             }
+        }
+        if (isRead && syncToInternet) {
+            com.bitchat.android.sync.InternetSyncBridge.onPrivateConversationRead(canonicalID)
         }
         return true
     }

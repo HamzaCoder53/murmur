@@ -59,6 +59,7 @@ object MessageHistory {
         if (enabled) {
             AppStateStore.initializeConversationPersistence(context)
         } else {
+            com.bitchat.android.sync.InternetSyncBridge.onSyncDisabled()
             AppStateStore.detachConversationPersistence()
             scope.launch { erase(context) }
         }

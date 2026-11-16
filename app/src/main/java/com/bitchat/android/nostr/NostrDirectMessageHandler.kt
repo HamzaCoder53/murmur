@@ -72,6 +72,19 @@ class NostrDirectMessageHandler(
                 val (content, rawSenderPubkey, rumorTimestamp) = decryptResult
                 val senderPubkey = rawSenderPubkey.lowercase()
 
+                if (geohash.isEmpty() &&
+                    senderPubkey == identity.publicKeyHex.lowercase() &&
+                    content.startsWith(com.bitchat.android.sync.InternetSyncProtocol.PREFIX)
+                ) {
+                    com.bitchat.android.sync.InternetSyncBridge.onSyncPayload(
+                        payload = content,
+                        rumorTimestampSec = rumorTimestamp,
+                        senderPubkeyHex = senderPubkey,
+                        ownPubkeyHex = identity.publicKeyHex
+                    )
+                    return@launch
+                }
+
                 // If sender is blocked for geohash contexts, drop any events from this pubkey
                 // Applies to both geohash DMs (geohash != "") and account DMs (geohash == "")
                 if (dataManager.isGeohashUserBlocked(senderPubkey)) return@launch

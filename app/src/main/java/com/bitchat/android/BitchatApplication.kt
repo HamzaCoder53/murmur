@@ -46,6 +46,20 @@ class BitchatApplication : Application() {
             com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(this)
         } catch (_: Exception) { }
 
+        // Initialize internet sync over Nostr (phone-only, default OFF)
+        try {
+            com.bitchat.android.sync.InternetSyncBridge.initializePhone(
+                context = this,
+                identityProvider = {
+                    com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(this)
+                },
+                publishGiftWrap = { event ->
+                    com.bitchat.android.nostr.NostrRelayManager.registerPendingGiftWrap(event.id)
+                    com.bitchat.android.nostr.NostrRelayManager.getInstance(this).sendEvent(event)
+                }
+            )
+        } catch (_: Exception) { }
+
         // Restore the spam filter toggle before transports start admitting public messages
         com.bitchat.android.spam.SpamFilterPreferences.init(this)
 
