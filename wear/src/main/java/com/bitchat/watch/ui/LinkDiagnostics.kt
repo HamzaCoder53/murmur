@@ -28,7 +28,6 @@ import androidx.wear.compose.material3.Text
 import com.bitchat.watch.link.LinkMode
 import com.bitchat.watch.mesh.WearMeshService
 import com.bitchat.watch.rendezvous.RendezvousEngine
-import com.bitchat.watch.rendezvous.RendezvousSchedule
 import com.bitchat.watch.ui.theme.LocalBitchatPalette
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -84,8 +83,7 @@ object LinkDiagnostics {
         RendezvousEngine.Phase.STOPPED -> R.string.diag_bluetooth_off
         RendezvousEngine.Phase.FOREGROUND -> R.string.diag_active_app_open
         RendezvousEngine.Phase.WINDOW_OPEN -> R.string.diag_scanning_now
-        RendezvousEngine.Phase.WAITING ->
-            if (status.mode == RendezvousSchedule.Mode.RECOVERY) R.string.diag_searching else R.string.diag_synced
+        RendezvousEngine.Phase.WAITING -> R.string.diag_synced
     }
 
     fun formatOffset(offsetMs: Long): String {

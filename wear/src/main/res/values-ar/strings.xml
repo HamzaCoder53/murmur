@@ -173,7 +173,6 @@
     <string name="diag_bluetooth_off">البلوتوث متوقف</string>
     <string name="diag_active_app_open">نشط، التطبيق مفتوح</string>
     <string name="diag_scanning_now">جارٍ البحث الآن</string>
-    <string name="diag_searching">يبحث عن آخرين</string>
     <string name="diag_synced">متزامن</string>
     <string name="diag_allow_precise">السماح بالتوقيت الدقيق</string>
     <string name="diag_precise_unavailable">التوقيت الدقيق غير متاح على هذه الساعة</string>

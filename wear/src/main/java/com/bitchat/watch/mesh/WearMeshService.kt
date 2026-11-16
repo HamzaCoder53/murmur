@@ -48,7 +48,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlin.random.Random
 
 /**
  * Watch mesh service: composes the shared mesh coordinator (MeshCore) with two ways of reaching
@@ -158,8 +157,7 @@ class WearMeshService private constructor(private val context: Context) {
         clock = meshClock,
         platform = AndroidRendezvousPlatform(context),
         setScanOverride = { PowerManager.getInstance(context).setScanWindowOverride(it) },
-        hasLivePeers = { connectionManager.getConnectedDeviceCount() > 0 },
-        recoveryPick = { Random.nextInt() }
+        hasLivePeers = { connectionManager.getConnectedDeviceCount() > 0 }
     )
 
     val rendezvousStatus: StateFlow<RendezvousEngine.Status> get() = rendezvous.status

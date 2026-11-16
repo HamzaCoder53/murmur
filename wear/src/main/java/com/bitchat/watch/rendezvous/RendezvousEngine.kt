@@ -20,8 +20,7 @@ class RendezvousEngine(
     private val clock: MeshClock,
     private val platform: Platform,
     private val setScanOverride: (ScanWindowOverride?) -> Unit,
-    private val hasLivePeers: () -> Boolean,
-    private val recoveryPick: () -> Int
+    private val hasLivePeers: () -> Boolean
 ) {
     interface Platform {
         /** Whether wakes can be scheduled to the second. When false they may arrive late. */
@@ -47,7 +46,7 @@ class RendezvousEngine(
 
     data class Status(
         val phase: Phase = Phase.STOPPED,
-        val mode: RendezvousSchedule.Mode = RendezvousSchedule.Mode.SYNCED,
+        /** Windows in a row that saw nobody. */
         val consecutiveMisses: Int = 0,
         /** False when the OS will not grant exact wakes, so windows drift from the shared schedule. */
         val preciseTiming: Boolean = false,
@@ -64,7 +63,7 @@ class RendezvousEngine(
 
     private val lock = Any()
     private var running = false
-    private var state = RendezvousSchedule.State()
+    private var misses = 0
     private var sawPeer = false
     private var cancelClose: (() -> Unit)? = null
 
@@ -75,7 +74,7 @@ class RendezvousEngine(
         synchronized(lock) {
             if (running) return
             running = true
-            state = RendezvousSchedule.State()
+            misses = 0
             sawPeer = false
             _status.value = Status()
             reschedule()
@@ -103,7 +102,7 @@ class RendezvousEngine(
             }
             if (_status.value.phase == Phase.WINDOW_OPEN) return
             val now = clock.now()
-            val window = RendezvousSchedule.currentOrNextWindow(now, state)
+            val window = RendezvousSchedule.currentOrNextWindow(now)
             // On time: scan to the shared close. Late (inexact wake): still scan a full window, since
             // peers advertise continuously and will be found whenever the scanner is on.
             val durationMs = if (window.contains(now)) {
@@ -120,10 +119,9 @@ class RendezvousEngine(
         synchronized(lock) {
             if (!running) return
             sawPeer = true
-            val restored = RendezvousSchedule.onPeerContact(state)
-            if (restored !== state) {
-                state = restored
-                if (_status.value.phase == Phase.WAITING) reschedule() else publish()
+            if (misses != 0) {
+                misses = 0
+                publish()
             }
         }
     }
@@ -152,7 +150,7 @@ class RendezvousEngine(
         if (_status.value.phase == Phase.WINDOW_OPEN) return
 
         val now = clock.now()
-        val window = RendezvousSchedule.currentOrNextWindow(now, state)
+        val window = RendezvousSchedule.currentOrNextWindow(now)
         if (window.contains(now)) {
             openWindow(window.closeMs - now)
             return
@@ -176,7 +174,7 @@ class RendezvousEngine(
         synchronized(lock) {
             if (!running || _status.value.phase != Phase.WINDOW_OPEN) return
             val sawPeerThisWindow = sawPeer || hasLivePeers()
-            state = RendezvousSchedule.onWindowClosed(state, sawPeerThisWindow, clock.now(), recoveryPick())
+            misses = if (sawPeerThisWindow) 0 else misses + 1
             sawPeer = false
             cancelClose = null
             setScanOverride(ScanWindowOverride.CLOSED)
@@ -184,6 +182,7 @@ class RendezvousEngine(
             _status.value = _status.value.copy(
                 phase = Phase.WAITING,
                 lastWindowSawPeer = sawPeerThisWindow,
+                consecutiveMisses = misses,
                 windowsCompleted = _status.value.windowsCompleted + 1
             )
             reschedule()
@@ -207,8 +206,7 @@ class RendezvousEngine(
     ) {
         _status.value = _status.value.copy(
             phase = phase,
-            mode = state.mode,
-            consecutiveMisses = state.consecutiveMisses,
+            consecutiveMisses = misses,
             preciseTiming = preciseTiming,
             nextWindowWallMs = nextWindowWallMs
         )

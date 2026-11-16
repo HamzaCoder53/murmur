@@ -151,7 +151,6 @@
     <string name="diag_bluetooth_off">Bluetooth off</string>
     <string name="diag_active_app_open">Active, app open</string>
     <string name="diag_scanning_now">Scanning now</string>
-    <string name="diag_searching">Searching</string>
     <string name="diag_synced">Synced</string>
     <string name="diag_allow_precise">Allow precise timing</string>
     <string name="diag_precise_unavailable">Precise timing not offered on this watch</string>

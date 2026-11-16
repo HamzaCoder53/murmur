@@ -4,7 +4,6 @@ import com.bitchat.watch.R
 import com.bitchat.watch.link.LinkMode
 import com.bitchat.watch.rendezvous.RendezvousEngine.Phase
 import com.bitchat.watch.rendezvous.RendezvousEngine.Status
-import com.bitchat.watch.rendezvous.RendezvousSchedule
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -25,7 +24,7 @@ class LinkDiagnosticsTest {
         R.string.diag_no_one to "No one", R.string.diag_scans_done to "Scans done",
         R.string.diag_clock_offset to "Clock offset", R.string.diag_bluetooth_off to "Bluetooth off",
         R.string.diag_active_app_open to "Active, app open", R.string.diag_scanning_now to "Scanning now",
-        R.string.diag_searching to "Searching", R.string.diag_synced to "Synced"
+        R.string.diag_synced to "Synced"
     )
 
     @Test
@@ -46,17 +45,6 @@ class LinkDiagnosticsTest {
         assertEquals("Synced", shown["Scan"])
         assertEquals("t55", shown["Next scan"])
         assertEquals("Precise", shown["Timing"])
-    }
-
-    @Test
-    fun `recovery reads as searching`() {
-        val shown = lines(
-            LinkMode.STANDALONE,
-            Status(phase = Phase.WAITING, mode = RendezvousSchedule.Mode.RECOVERY)
-        )
-
-        assertEquals("Searching", shown["Scan"])
-        assertEquals("Approximate", shown["Timing"])
     }
 
     @Test

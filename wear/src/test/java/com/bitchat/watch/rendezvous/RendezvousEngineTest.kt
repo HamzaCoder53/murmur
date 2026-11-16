@@ -53,8 +53,7 @@ class RendezvousEngineTest {
         clock = clock,
         platform = platform,
         setScanOverride = { overrides += it },
-        hasLivePeers = { livePeers },
-        recoveryPick = { 0 }
+        hasLivePeers = { livePeers }
     )
 
     /** Jump to the scheduled wake and deliver it, as the alarm would. */
@@ -82,7 +81,7 @@ class RendezvousEngineTest {
         engine.start()
 
         assertEquals(ScanWindowOverride.CLOSED, overrides.last())
-        assertEquals(base + 55_000, platform.wakeAt)
+        assertEquals(base + 57_500, platform.wakeAt)
         assertEquals(true, platform.wakeExact)
         assertEquals(Phase.WAITING, engine.status.value.phase)
         assertTrue(engine.status.value.preciseTiming)
@@ -96,7 +95,7 @@ class RendezvousEngineTest {
 
         assertEquals(ScanWindowOverride.OPEN, overrides.last())
         assertEquals(Phase.WINDOW_OPEN, engine.status.value.phase)
-        assertEquals(base + 65_000, platform.pending?.first)
+        assertEquals(base + 62_500, platform.pending?.first)
         assertTrue(platform.wakeLockHeld)
     }
 
@@ -108,7 +107,7 @@ class RendezvousEngineTest {
 
         assertEquals(ScanWindowOverride.OPEN, overrides.last())
         assertTrue(platform.wakeLockHeld)
-        assertEquals(base + 65_000, platform.pending?.first)
+        assertEquals(base + 62_500, platform.pending?.first)
     }
 
     @Test
@@ -119,7 +118,7 @@ class RendezvousEngineTest {
 
         assertEquals(ScanWindowOverride.CLOSED, overrides.last())
         assertFalse(platform.wakeLockHeld)
-        assertEquals(base + 115_000, platform.wakeAt)
+        assertEquals(base + 117_500, platform.wakeAt)
         assertEquals(1L, engine.status.value.windowsCompleted)
     }
 
@@ -133,7 +132,6 @@ class RendezvousEngineTest {
 
         assertEquals(true, engine.status.value.lastWindowSawPeer)
         assertEquals(0, engine.status.value.consecutiveMisses)
-        assertEquals(RendezvousSchedule.Mode.SYNCED, engine.status.value.mode)
     }
 
     @Test
@@ -143,30 +141,29 @@ class RendezvousEngineTest {
 
         repeat(4) { runWindow() }
 
-        assertEquals(RendezvousSchedule.Mode.SYNCED, engine.status.value.mode)
+        assertEquals(0, engine.status.value.consecutiveMisses)
     }
 
     @Test
-    fun `three empty windows switch to the recovery period`() {
+    fun `empty windows are counted but the watch stays on the minute schedule`() {
         engine.start()
 
         repeat(3) { runWindow() }
 
-        assertEquals(RendezvousSchedule.Mode.RECOVERY, engine.status.value.mode)
-        // Third window closed at base + 185 s; first recovery window is 53 s after that.
-        assertEquals(base + 185_000 + 53_000, platform.wakeAt)
+        assertEquals(3, engine.status.value.consecutiveMisses)
+        assertEquals(base + 57_500 + 3 * 60_000, platform.wakeAt)
     }
 
     @Test
-    fun `peer contact while waiting in recovery snaps back to the minute boundary`() {
+    fun `peer contact clears the miss count without moving the next wake`() {
         engine.start()
         repeat(3) { runWindow() }
-        wall = base + 190_000
+        val next = platform.wakeAt
 
         engine.onPeerContact()
 
-        assertEquals(RendezvousSchedule.Mode.SYNCED, engine.status.value.mode)
-        assertEquals(base + 235_000, platform.wakeAt)
+        assertEquals(0, engine.status.value.consecutiveMisses)
+        assertEquals(next, platform.wakeAt)
     }
 
     @Test
@@ -176,7 +173,7 @@ class RendezvousEngineTest {
 
         engine.start()
 
-        assertEquals(base + 55_000 - 2_000, platform.wakeAt)
+        assertEquals(base + 57_500 - 2_000, platform.wakeAt)
     }
 
     @Test
@@ -249,7 +246,7 @@ class RendezvousEngineTest {
         engine.onForegroundChanged()
 
         assertEquals(ScanWindowOverride.CLOSED, overrides.last())
-        assertEquals(base + 55_000, platform.wakeAt)
+        assertEquals(base + 57_500, platform.wakeAt)
     }
 
     @Test
