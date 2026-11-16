@@ -157,6 +157,8 @@ fun PermissionExplanationScreen(
                 )
             )
         }
+        Spacer(modifier = Modifier.height(4.dp))
+        com.bitchat.android.backup.TransferFromOldPhoneOnboardingButton()
     }
 }
 
