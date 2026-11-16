@@ -71,7 +71,8 @@ class LinkCoordinator(
     sealed interface Pairing {
         object Idle : Pairing
         /** Existing device: QR code shown, waiting for the new device. */
-        data class Offering(val secret: ByteArray, val expiresAt: Long) : Pairing
+        /** Showing a QR code and, alongside it, a 6-digit [code] to type instead (null once burnt). */
+        data class Offering(val secret: ByteArray, val expiresAt: Long, val code: String? = null) : Pairing
         /** Existing device: the new device authenticated; the user must confirm. */
         data class AwaitingApproval(val deviceName: String) : Pairing
         /** New device: connected; waiting for the user to confirm on the existing device. */
@@ -129,8 +130,25 @@ class LinkCoordinator(
     fun startPairingOffer(): ByteArray {
         val secret = LinkCrypto.randomBytes(LinkCrypto.KEY_BYTES)
         badPairingAttempts = 0
-        _pairing.value = Pairing.Offering(secret, clock() + PAIRING_OFFER_MS)
+        _pairing.value = Pairing.Offering(secret, clock() + PAIRING_OFFER_MS, PasskeyPairing.newCode())
         return secret
+    }
+
+    /** The 6-digit code on offer right now, if any (see [PasskeyPairing]). */
+    fun offeredCode(): String? = (_pairing.value as? Pairing.Offering)
+        ?.takeIf { clock() < it.expiresAt }?.code
+
+    /**
+     * Someone typed a wrong code (or tried to guess it): this code is spent. A fresh one is shown,
+     * so each code allows exactly one attempt; repeated failures withdraw the offer altogether.
+     */
+    fun onCodeFailed() {
+        val offer = _pairing.value as? Pairing.Offering ?: return
+        if (++badPairingAttempts >= MAX_BAD_PAIRING_ATTEMPTS) {
+            _pairing.value = Pairing.Failed("too many failed attempts")
+        } else {
+            _pairing.value = offer.copy(code = PasskeyPairing.newCode())
+        }
     }
 
     fun cancelPairing() {

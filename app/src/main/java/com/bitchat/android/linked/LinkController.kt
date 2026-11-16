@@ -110,6 +110,21 @@ object LinkController {
         return true
     }
 
+    /** The 6-digit code shown with the current pairing QR (null when not offering). */
+    fun offeredCode(): String? = _coordinator?.offeredCode()
+
+    /** Pair by typing the 6-digit code shown on the existing device (same Wi-Fi). */
+    fun joinWithCode(context: Context, code: String): Boolean {
+        if (!PasskeyPairing.isCode(code)) return false
+        initialize(context)
+        val c = _coordinator ?: return false
+        val t = transport ?: return false
+        c.start()
+        if (!t.isRunning()) t.start()
+        t.connectWithCode(code)
+        return true
+    }
+
     suspend fun panicWipeAll() {
         _coordinator?.panicWipeAll()
     }

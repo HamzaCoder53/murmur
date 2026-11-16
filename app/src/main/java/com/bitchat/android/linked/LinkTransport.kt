@@ -102,6 +102,8 @@ class LinkTransport(
         private const val SERVICE_PREFIX = "sl-"
         private const val CONNECT_TIMEOUT_MS = 6_000
         private const val REDIAL_BACKOFF_MS = 3_000L
+        /** How long a device typing a code looks for the device showing it. */
+        private const val CODE_SEARCH_MS = 20_000L
     }
 
     private val appContext = context.applicationContext
@@ -179,13 +181,59 @@ class LinkTransport(
                 coordinator.failPairing("unreachable")
                 return@launch
             }
+            pairOver(io, qr.deviceId, qr.secret)
+        }
+    }
+
+    /**
+     * Pair by typing the 6-digit code shown on the existing device. Devices offering Skein links
+     * on this Wi-Fi are tried in turn; one that is not offering a code says so at once and is
+     * skipped without learning anything.
+     */
+    fun connectWithCode(code: String) {
+        scope.launch(Dispatchers.IO) {
+            val deadline = System.currentTimeMillis() + CODE_SEARCH_MS
+            val tried = HashSet<String>()
+            val linked = store.devices().map { it.deviceId }.toSet()
+            while (System.currentTimeMillis() < deadline) {
+                val candidates = discovered.entries
+                    .filter { it.key != store.myDeviceId && it.key !in linked && it.key !in tried }
+                for ((deviceId, address) in candidates) {
+                    tried += deviceId
+                    val io = dialTcp(address.first, address.second) ?: continue
+                    val result = withTimeoutOrNull(LinkCoordinator.HELLO_TIMEOUT_MS) {
+                        PasskeyPairing.runInitiator(io, code)
+                    }
+                    when (result) {
+                        is PasskeyPairing.Result.Ok -> {
+                            pairOver(io, deviceId, result.secret)
+                            return@launch
+                        }
+                        is PasskeyPairing.Result.Failed -> {
+                            io.close()
+                            if (result.reason == PasskeyPairing.Failure.WRONG_CODE) {
+                                coordinator.failPairing("wrong_code")
+                                return@launch
+                            }
+                        }
+                        null -> io.close()
+                    }
+                }
+                delay(500)
+            }
+            coordinator.failPairing("not_found")
+        }
+    }
+
+    private suspend fun pairOver(io: SocketFrameIo, serverDeviceId: String, secret: ByteArray) {
+        run {
             val result = withTimeoutOrNull(LinkCoordinator.HELLO_TIMEOUT_MS) {
                 LinkHandshake.runClient(
                     io = io,
                     myDeviceId = store.myDeviceId,
                     mode = LinkHandshake.Mode.PAIR,
-                    key = { qr.secret },
-                    expectedServerId = qr.deviceId
+                    key = { secret },
+                    expectedServerId = serverDeviceId
                 )
             }
             when (result) {
@@ -194,7 +242,7 @@ class LinkTransport(
                     if (key == null) {
                         io.close()
                         coordinator.failPairing("missing_key")
-                        return@launch
+                        return@run
                     }
                     val session = LinkSession(result.peerDeviceId, io, result.cipher, dialed = true)
                     coordinator.runPairingAsNew(session, key)
@@ -243,8 +291,40 @@ class LinkTransport(
             try { socket.close() } catch (_: Exception) { }
             return
         }
+        // A device typing our 6-digit code speaks the passkey protocol first; it then runs the
+        // ordinary pairing handshake with the secret that produced.
+        val first = withTimeoutOrNull(LinkCoordinator.HELLO_TIMEOUT_MS) { io.receive() }
+        if (first == null) {
+            io.close()
+            return
+        }
+        var keys: LinkHandshake.ServerKeys = coordinator.serverKeys
+        val handshakeIo: FrameIo
+        if (PasskeyPairing.isHello(first)) {
+            val code = coordinator.offeredCode()
+            val passkey = withTimeoutOrNull(LinkCoordinator.HELLO_TIMEOUT_MS) {
+                PasskeyPairing.runResponder(io, first, code)
+            }
+            if (passkey !is PasskeyPairing.Result.Ok) {
+                if (passkey == null ||
+                    (passkey as PasskeyPairing.Result.Failed).reason != PasskeyPairing.Failure.NO_OFFER
+                ) {
+                    coordinator.onCodeFailed()
+                }
+                io.close()
+                return
+            }
+            val base = coordinator.serverKeys
+            keys = object : LinkHandshake.ServerKeys {
+                override fun pairingSecret(): ByteArray = passkey.secret
+                override fun linkKey(deviceId: String): ByteArray? = base.linkKey(deviceId)
+            }
+            handshakeIo = io
+        } else {
+            handshakeIo = PushbackFrameIo(io, first)
+        }
         val result = withTimeoutOrNull(LinkCoordinator.HELLO_TIMEOUT_MS) {
-            LinkHandshake.runServer(io, store.myDeviceId, coordinator.serverKeys)
+            LinkHandshake.runServer(handshakeIo, store.myDeviceId, keys)
         }
         when (result) {
             is LinkHandshake.Result.Ok -> {
@@ -418,4 +498,22 @@ class LinkTransport(
         val id = serviceName.removePrefix(SERVICE_PREFIX).take(32)
         return id.takeIf(LinkHandshake::isDeviceId)
     }
+}
+
+/** Replays one frame already read, then reads from [io] (lets a server peek at the first frame). */
+internal class PushbackFrameIo(private val io: FrameIo, first: ByteArray) : FrameIo {
+    @Volatile
+    private var pending: ByteArray? = first
+
+    override suspend fun send(frame: ByteArray): Boolean = io.send(frame)
+
+    override suspend fun receive(): ByteArray? {
+        pending?.let {
+            pending = null
+            return it
+        }
+        return io.receive()
+    }
+
+    override fun close() = io.close()
 }

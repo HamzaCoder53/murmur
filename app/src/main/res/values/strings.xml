@@ -788,4 +788,13 @@
   <string name="linked_devices_invalid_qr">Not a valid Skein device-link QR code.</string>
   <string name="android_backup_title">Android backup</string>
   <string name="android_backup_desc">Back up identity and text chats via Android\'s encrypted device backup (excludes media).</string>
+  <string name="linked_devices_code_hint">Or type this code on the other device (same Wi-Fi):</string>
+  <string name="linked_devices_enter_code">Enter a code instead</string>
+  <string name="linked_devices_code_entry_hint">Type the 6-digit code shown on your other device. Both devices must be on the same Wi-Fi.</string>
+  <string name="linked_devices_code_link">Link</string>
+  <string name="transfer_passkey_hint">Or type this code on the new phone (same Wi-Fi):</string>
+  <string name="transfer_enter_code">Enter a code instead</string>
+  <string name="transfer_code_entry_hint">Type the 6-digit code shown on your old phone. Both phones must be on the same Wi-Fi.</string>
+  <string name="transfer_code_start">Transfer</string>
+  <string name="transfer_error_code">Couldn\'t find the old phone with that code. Check both phones are on the same Wi-Fi, and if the code was wrong, start again on the old phone.</string>
 </resources>

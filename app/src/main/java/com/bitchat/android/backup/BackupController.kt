@@ -30,7 +30,13 @@ object BackupController {
         data object Idle : State
         data class Working(@StringRes val label: Int, val done: Long = 0, val total: Long = 0) : State
         /** Old phone: waiting for the new phone to scan [qr]. */
-        data class WaitingForNewPhone(val qr: String, val code: String, val expiresAt: Long) : State
+        data class WaitingForNewPhone(
+            val qr: String,
+            val code: String,
+            val expiresAt: Long,
+            /** 6-digit code to type on the new phone instead of scanning; null once spent. */
+            val passkey: String? = null
+        ) : State
         data class Done(
             @StringRes val message: Int,
             val added: Int = 0,
@@ -154,14 +160,27 @@ object BackupController {
                 SkeinCrypto.KeySource.RawKey(TransferProtocol.archiveKey(invitation.key)),
                 progress(R.string.backup_progress_writing)
             )
+            var passkey: String? = com.bitchat.android.linked.PasskeyPairing.newCode()
             _state.value = State.WaitingForNewPhone(
-                invitation.encode(), invitation.code, System.currentTimeMillis() + TransferProtocol.LISTEN_WINDOW_MS
+                invitation.encode(), invitation.code, System.currentTimeMillis() + TransferProtocol.LISTEN_WINDOW_MS,
+                passkey
             )
-            val ok = TransferNetwork.serve(
-                invitation, listener, addresses.toSet<InetAddress>(), archiveFile,
-                onConnected = { _state.value = State.Working(R.string.transfer_progress_sending) },
-                progress = progress(R.string.transfer_progress_sending)
-            )
+            val stopAdvertising = TransferCode.advertise(app, port)
+            val ok = try {
+                TransferNetwork.serve(
+                    invitation, listener, addresses.toSet<InetAddress>(), archiveFile,
+                    onConnected = { _state.value = State.Working(R.string.transfer_progress_sending) },
+                    progress = progress(R.string.transfer_progress_sending),
+                    passkeyCode = { passkey },
+                    onCodeFailed = {
+                        // One try per code: a wrong one is spent; the QR code still works.
+                        passkey = null
+                        (_state.value as? State.WaitingForNewPhone)?.let { _state.value = it.copy(passkey = null) }
+                    }
+                )
+            } finally {
+                stopAdvertising()
+            }
             _state.value = if (ok) {
                 State.Done(R.string.transfer_send_done, offerWipe = true)
             } else {
@@ -175,6 +194,19 @@ object BackupController {
 
     // --- Phone move: new phone ---
 
+    /** New phone, typing the 6-digit code shown on the old phone (same Wi-Fi). */
+    fun receiveWithCode(context: Context, code: String) = launch {
+        val app = context.applicationContext
+        _state.value = State.Working(R.string.transfer_progress_connecting)
+        val found = TransferCode.find(app, code)
+        if (found == null) {
+            _state.value = State.Failed(R.string.transfer_error_code)
+            return@launch
+        }
+        val (invitation, socket) = found
+        receiveOver(app, invitation, socket)
+    }
+
     fun receive(context: Context, scanned: String) = launch {
         val app = context.applicationContext
         val invitation = TransferProtocol.parseInvitation(scanned)
@@ -182,10 +214,14 @@ object BackupController {
             _state.value = State.Failed(R.string.transfer_error_bad_qr)
             return@launch
         }
+        _state.value = State.Working(R.string.transfer_progress_connecting)
+        val socket = TransferNetwork.connect(app, invitation)
+        receiveOver(app, invitation, socket)
+    }
+
+    private suspend fun receiveOver(app: Context, invitation: TransferProtocol.Invitation, socket: java.net.Socket) {
         val file = DeviceBackup.transferFile(app, "incoming.skein")
         try {
-            _state.value = State.Working(R.string.transfer_progress_connecting)
-            val socket = TransferNetwork.connect(app, invitation)
             val archive = withContext(Dispatchers.IO) {
                 socket.use { s ->
                     TransferProtocol.receive(

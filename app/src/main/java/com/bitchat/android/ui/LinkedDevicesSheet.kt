@@ -94,6 +94,8 @@ fun LinkedDevicesSheet(
 
     var qrPayload by remember { mutableStateOf<String?>(null) }
     var scanning by remember { mutableStateOf(false) }
+    var enteringCode by remember { mutableStateOf(false) }
+    var typedCode by remember { mutableStateOf("") }
     var scanError by remember { mutableStateOf<String?>(null) }
     var pendingUnlink by remember { mutableStateOf<LinkedDevice?>(null) }
     var confirmLeave by remember { mutableStateOf(false) }
@@ -213,6 +215,57 @@ fun LinkedDevicesSheet(
                     }
                 }
 
+                if (enteringCode) {
+                    item(key = "code_entry") {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = colorScheme.surface,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.linked_devices_code_entry_hint),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    textAlign = TextAlign.Center,
+                                    color = colorScheme.onSurfaceVariant
+                                )
+                                androidx.compose.material3.OutlinedTextField(
+                                    value = typedCode,
+                                    onValueChange = { typedCode = it.filter(Char::isDigit).take(6) },
+                                    singleLine = true,
+                                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                        keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
+                                    ),
+                                    textStyle = MaterialTheme.typography.headlineSmall.copy(
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        textAlign = TextAlign.Center
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    TextButton(onClick = { enteringCode = false }) {
+                                        Text(stringResource(R.string.cancel))
+                                    }
+                                    Button(
+                                        enabled = typedCode.length == 6,
+                                        onClick = {
+                                            if (LinkController.joinWithCode(context, typedCode)) {
+                                                enteringCode = false
+                                                typedCode = ""
+                                                scanError = null
+                                            }
+                                        }
+                                    ) { Text(stringResource(R.string.linked_devices_code_link)) }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if (scanError != null) {
                     item(key = "scan_error") {
                         Text(
@@ -299,6 +352,18 @@ fun LinkedDevicesSheet(
                             Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(stringResource(R.string.linked_devices_link_other))
+                        }
+
+                        TextButton(
+                            onClick = {
+                                qrPayload = null
+                                scanning = false
+                                coordinator?.cancelPairing()
+                                enteringCode = !enteringCode
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(stringResource(R.string.linked_devices_enter_code))
                         }
 
                         if (devices.isNotEmpty()) {
@@ -479,6 +544,21 @@ private fun PairingCard(
                         textAlign = TextAlign.Center,
                         color = colorScheme.onSurfaceVariant
                     )
+                    state.code?.let { code ->
+                        Text(
+                            text = stringResource(R.string.linked_devices_code_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            textAlign = TextAlign.Center,
+                            color = colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = code.chunked(3).joinToString(" "),
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            color = colorScheme.onSurface
+                        )
+                    }
                     TextButton(onClick = onClose) {
                         Text(stringResource(R.string.cancel))
                     }

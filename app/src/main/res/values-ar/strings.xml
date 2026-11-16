@@ -520,4 +520,13 @@
   <string name="linked_devices_invalid_qr">رمز QR غير صالح لربط أجهزة Skein.</string>
   <string name="android_backup_title">النسخ الاحتياطي لنظام Android</string>
   <string name="android_backup_desc">نسخ الهوية والمحادثات النصية احتياطيًا عبر النسخ المشفّر للجهاز في Android (دون الوسائط).</string>
+  <string name="linked_devices_code_hint">أو اكتب هذا الرمز على الجهاز الآخر (على شبكة Wi-Fi نفسها):</string>
+  <string name="linked_devices_enter_code">إدخال رمز بدلًا من ذلك</string>
+  <string name="linked_devices_code_entry_hint">اكتب الرمز المكوّن من 6 أرقام الظاهر على جهازك الآخر. يجب أن يكون الجهازان على شبكة Wi-Fi نفسها.</string>
+  <string name="linked_devices_code_link">ربط</string>
+  <string name="transfer_passkey_hint">أو اكتب هذا الرمز على الهاتف الجديد (على شبكة Wi-Fi نفسها):</string>
+  <string name="transfer_enter_code">إدخال رمز بدلًا من ذلك</string>
+  <string name="transfer_code_entry_hint">اكتب الرمز المكوّن من 6 أرقام الظاهر على هاتفك القديم. يجب أن يكون الهاتفان على شبكة Wi-Fi نفسها.</string>
+  <string name="transfer_code_start">نقل</string>
+  <string name="transfer_error_code">تعذّر العثور على الهاتف القديم بهذا الرمز. تأكد من أن الهاتفين على شبكة Wi-Fi نفسها، وإن كان الرمز خاطئًا فابدأ من جديد على الهاتف القديم.</string>
 </resources>

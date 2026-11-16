@@ -193,6 +193,15 @@ internal fun BackupStatusDialog(onWipeThisPhone: (() -> Unit)?) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         QRCodeImage(data = s.qr, size = 240.dp)
                         Text(stringResource(R.string.transfer_waiting_code, s.code), fontWeight = FontWeight.Bold)
+                        s.passkey?.let { passkey ->
+                            Text(stringResource(R.string.transfer_passkey_hint), fontSize = 13.sp)
+                            Text(
+                                passkey.chunked(3).joinToString(" "),
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            )
+                        }
                         Text(
                             stringResource(R.string.transfer_waiting_note, (secondsLeft / 60).toInt(), (secondsLeft % 60).toInt()),
                             fontSize = 13.sp

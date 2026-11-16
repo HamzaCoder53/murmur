@@ -1,5 +1,6 @@
 package com.bitchat.android.backup
 
+import androidx.compose.ui.Alignment
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -87,7 +88,10 @@ internal fun SendToNewPhoneDialog(onDismiss: () -> Unit) {
 internal fun ReceiveFromOldPhoneDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     var scanning by remember { mutableStateOf(false) }
+    var typing by remember { mutableStateOf(false) }
+    var typedCode by remember { mutableStateOf("") }
     val camera = rememberPermissionState(Manifest.permission.CAMERA)
+    val (_, beginTyping) = rememberWithLocalNetwork { typing = true }
     val (denied, beginScan) = rememberWithLocalNetwork {
         scanning = true
         if (!camera.status.isGranted) camera.launchPermissionRequest()
@@ -100,7 +104,18 @@ internal fun ReceiveFromOldPhoneDialog(onDismiss: () -> Unit) {
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (!scanning) {
+                if (typing) {
+                    Text(stringResource(R.string.transfer_code_entry_hint))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = typedCode,
+                        onValueChange = { typedCode = it.filter(Char::isDigit).take(6) },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else if (!scanning) {
                     Text(stringResource(R.string.transfer_scan_instructions))
                     Text(stringResource(R.string.transfer_network_note), fontSize = 12.sp)
                     Text(stringResource(R.string.transfer_receive_warning), color = MaterialTheme.colorScheme.error)
@@ -126,9 +141,22 @@ internal fun ReceiveFromOldPhoneDialog(onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            if (!scanning) {
-                TextButton(enabled = !BackupController.isBusy, onClick = beginScan) {
-                    Text(stringResource(R.string.transfer_scan_button), color = MaterialTheme.colorScheme.error)
+            if (typing) {
+                TextButton(
+                    enabled = !BackupController.isBusy && typedCode.length == 6,
+                    onClick = {
+                        BackupController.receiveWithCode(context, typedCode)
+                        onDismiss()
+                    }
+                ) { Text(stringResource(R.string.transfer_code_start), color = MaterialTheme.colorScheme.error) }
+            } else if (!scanning) {
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(enabled = !BackupController.isBusy, onClick = beginScan) {
+                        Text(stringResource(R.string.transfer_scan_button), color = MaterialTheme.colorScheme.error)
+                    }
+                    TextButton(enabled = !BackupController.isBusy, onClick = beginTyping) {
+                        Text(stringResource(R.string.transfer_enter_code))
+                    }
                 }
             }
         },

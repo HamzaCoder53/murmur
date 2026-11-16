@@ -29,6 +29,7 @@ object TransferNetwork {
     private const val TAG = "TransferNetwork"
     private const val CONNECT_TIMEOUT_MS = 5_000
     private const val READ_TIMEOUT_MS = 30_000
+    private val QR_MAGIC = "SKMV1".toByteArray(Charsets.US_ASCII)
     private val WIFI_INTERFACE_PREFIXES = listOf("wlan", "swlan", "ap", "softap", "wifi", "eth")
 
     /** The Wi-Fi network, if this phone is on one (it may also be a hotspot instead). */
@@ -74,7 +75,11 @@ object TransferNetwork {
         allowed: Set<InetAddress>,
         archive: File,
         onConnected: () -> Unit,
-        progress: ProgressListener
+        progress: ProgressListener,
+        /** The 6-digit code on offer for typing instead of scanning (null: QR only). */
+        passkeyCode: () -> String? = { null },
+        /** A typed code was wrong: it is spent. */
+        onCodeFailed: () -> Unit = {}
     ): Boolean = withContext(Dispatchers.IO) {
         val handle = currentCoroutineContext().job.invokeOnCompletion { try { server.close() } catch (_: IOException) { } }
         try {
@@ -95,8 +100,39 @@ object TransferNetwork {
                     if (allowed.isNotEmpty() && s.localAddress !in allowed) return@use
                     s.soTimeout = READ_TIMEOUT_MS
                     try {
+                        // A QR connection starts with the protocol magic; a typed code starts with
+                        // a passkey frame. Peek to tell which.
+                        val input = java.io.PushbackInputStream(s.getInputStream(), QR_MAGIC.size)
+                        val head = ByteArray(QR_MAGIC.size)
+                        var read = 0
+                        while (read < head.size) {
+                            val n = input.read(head, read, head.size - read)
+                            if (n < 0) break
+                            read += n
+                        }
+                        input.unread(head, 0, read)
+                        if (read != head.size || !head.contentEquals(QR_MAGIC)) {
+                            val io = TransferCode.StreamFrameIo(java.io.DataInputStream(input), java.io.DataOutputStream(s.getOutputStream()))
+                            val hello = io.receive()
+                            if (hello == null || !com.bitchat.android.linked.PasskeyPairing.isHello(hello)) {
+                                failures++
+                                return@use
+                            }
+                            when (val r = com.bitchat.android.linked.PasskeyPairing.runResponder(io, hello, passkeyCode())) {
+                                is com.bitchat.android.linked.PasskeyPairing.Result.Ok -> {
+                                    if (!io.send(TransferCode.seal(r.secret, invitation))) return@use
+                                }
+                                is com.bitchat.android.linked.PasskeyPairing.Result.Failed -> {
+                                    if (r.reason != com.bitchat.android.linked.PasskeyPairing.Failure.NO_OFFER) {
+                                        onCodeFailed()
+                                        failures++
+                                    }
+                                    return@use
+                                }
+                            }
+                        }
                         onConnected()
-                        val ok = TransferProtocol.serve(s.getInputStream(), s.getOutputStream(), invitation, archive, progress)
+                        val ok = TransferProtocol.serve(input, s.getOutputStream(), invitation, archive, progress)
                         return@withContext ok
                     } catch (e: TransferAuthException) {
                         Log.w(TAG, "Rejected a transfer connection: ${e.message}")
