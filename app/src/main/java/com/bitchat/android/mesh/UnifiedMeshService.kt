@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import com.bitchat.android.favorites.FavoriteControlMessage
 import com.bitchat.android.lan.LanController
+import com.bitchat.android.linked.LinkCommand
+import com.bitchat.android.linked.LinkController
 import com.bitchat.android.model.BitchatFilePacket
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.noise.NoiseSession
@@ -41,6 +43,24 @@ class UnifiedMeshService(
     private val powerManager = PowerManager.getInstance(context.applicationContext)
     private var announcementJob: Job? = null
 
+    @Volatile
+    private var radiosSuppressed: Boolean = false
+
+    fun setRadiosSuppressed(suppressed: Boolean) {
+        if (radiosSuppressed == suppressed) return
+        radiosSuppressed = suppressed
+        if (suppressed) {
+            try { bluetooth.setBleTransportEnabled(false) } catch (_: Exception) { }
+            try { WifiAwareController.stop() } catch (_: Exception) { }
+            try { LanController.stop() } catch (_: Exception) { }
+        } else {
+            try { bluetooth.setBleTransportEnabled(isBleEnabled()) } catch (_: Exception) { }
+            try { WifiAwareController.startIfPossible() } catch (_: Exception) { }
+            try { LanController.startIfPossible(context) } catch (_: Exception) { }
+            refreshDelegates()
+        }
+    }
+
     override val myPeerID: String
         get() = bluetooth.myPeerID
 
@@ -56,22 +76,27 @@ class UnifiedMeshService(
     }
 
     override fun startServices() {
-        if (isBleEnabled()) {
+        try { LinkController.startIfNeeded(context) } catch (e: Exception) {
+            Log.w(TAG, "Failed to start linked devices controller: ${e.message}")
+        }
+        if (!radiosSuppressed && isBleEnabled()) {
             try { bluetooth.startServices() } catch (e: Exception) {
                 Log.w(TAG, "Failed to start BLE transport: ${e.message}")
             }
         } else {
             try { bluetooth.setBleTransportEnabled(false) } catch (_: Exception) { }
         }
-        try { WifiAwareController.startIfPossible() } catch (e: Exception) {
-            Log.w(TAG, "Failed to start Wi-Fi Aware transport: ${e.message}")
+        if (!radiosSuppressed) {
+            try { WifiAwareController.startIfPossible() } catch (e: Exception) {
+                Log.w(TAG, "Failed to start Wi-Fi Aware transport: ${e.message}")
+            }
+            // No-op unless the user turned on the local Wi-Fi mesh and granted its permission.
+            try { LanController.startIfPossible(context) } catch (e: Exception) {
+                Log.w(TAG, "Failed to start local Wi-Fi transport: ${e.message}")
+            }
         }
         try { WearLinkController.startIfPossible(context) } catch (e: Exception) {
             Log.w(TAG, "Failed to start watch link transport: ${e.message}")
-        }
-        // No-op unless the user turned on the local Wi-Fi mesh and granted its permission.
-        try { LanController.startIfPossible(context) } catch (e: Exception) {
-            Log.w(TAG, "Failed to start local Wi-Fi transport: ${e.message}")
         }
         startAnnouncementScheduler()
         refreshDelegates()
@@ -107,6 +132,7 @@ class UnifiedMeshService(
     }
 
     override fun sendMessage(content: String, mentions: List<String>, channel: String?) {
+        if (LinkController.forward(LinkCommand.SendPublic(null, content, mentions, channel))) return
         when {
             isBleEnabled() -> bluetooth.sendMessage(content, mentions, channel)
             else -> wifiService()?.sendMessage(content, mentions, channel)
@@ -119,6 +145,8 @@ class UnifiedMeshService(
         recipientNickname: String,
         messageID: String?
     ) {
+        val id = messageID ?: java.util.UUID.randomUUID().toString()
+        if (LinkController.forward(LinkCommand.SendPrivate(id, content, recipientPeerID, recipientNickname))) return
         when {
             isBleReady(recipientPeerID) -> bluetooth.sendPrivateMessage(content, recipientPeerID, recipientNickname, messageID)
             isWifiReady(recipientPeerID) -> wifiService()?.sendPrivateMessage(content, recipientPeerID, recipientNickname, messageID)
@@ -129,6 +157,7 @@ class UnifiedMeshService(
     }
 
     override fun sendReadReceipt(messageID: String, recipientPeerID: String, readerNickname: String) {
+        if (LinkController.forward(LinkCommand.ReadReceipt(messageID, recipientPeerID))) return
         when {
             isBleReady(recipientPeerID) -> bluetooth.sendReadReceipt(messageID, recipientPeerID, readerNickname)
             isWifiReady(recipientPeerID) -> wifiService()?.sendReadReceipt(messageID, recipientPeerID, readerNickname)
@@ -136,6 +165,7 @@ class UnifiedMeshService(
     }
 
     override fun sendFavoriteNotification(peerID: String, isFavorite: Boolean) {
+        if (LinkController.forward(LinkCommand.SetFavorite(peerID, isFavorite))) return
         val myNpub = try {
             com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(context)?.npub
         } catch (_: Exception) {
@@ -163,6 +193,11 @@ class UnifiedMeshService(
     }
 
     override fun sendFileBroadcast(file: BitchatFilePacket) {
+        if (LinkController.forward(
+                LinkCommand.SendFile(java.util.UUID.randomUUID().toString(), null, file.fileName, file.mimeType, kindForMime(file.mimeType)),
+                file.content
+            )
+        ) return
         when {
             isBleEnabled() -> bluetooth.sendFileBroadcast(file)
             else -> wifiService()?.sendFileBroadcast(file)
@@ -170,6 +205,11 @@ class UnifiedMeshService(
     }
 
     override fun sendFilePrivate(recipientPeerID: String, file: BitchatFilePacket) {
+        if (LinkController.forward(
+                LinkCommand.SendFile(java.util.UUID.randomUUID().toString(), recipientPeerID, file.fileName, file.mimeType, kindForMime(file.mimeType)),
+                file.content
+            )
+        ) return
         when {
             isBleReady(recipientPeerID) -> bluetooth.sendFilePrivate(recipientPeerID, file)
             isWifiReady(recipientPeerID) -> wifiService()?.sendFilePrivate(recipientPeerID, file)
@@ -238,6 +278,7 @@ class UnifiedMeshService(
     }
 
     override fun sendBroadcastAnnounce() {
+        if (radiosSuppressed || LinkController.isFollowing()) return
         if (isBleEnabled()) {
             try { bluetooth.sendBroadcastAnnounce() } catch (_: Exception) { }
         }
@@ -253,6 +294,7 @@ class UnifiedMeshService(
 
     override fun getPeerNicknames(): Map<String, String> {
         val merged = linkedMapOf<String, String>()
+        LinkController.mirrorPeers.value?.forEach { merged[it.peerID] = it.nickname }
         try { merged.putAll(wifiService()?.getPeerNicknames().orEmpty()) } catch (_: Exception) { }
         try { merged.putAll(bluetooth.getPeerNicknames()) } catch (_: Exception) { }
         return merged
@@ -270,10 +312,14 @@ class UnifiedMeshService(
     }
 
     override fun hasEstablishedSession(peerID: String): Boolean {
+        val mirrored = LinkController.mirrorPeers.value?.firstOrNull { it.peerID == peerID }
+        if (mirrored != null && mirrored.hasSession) return true
         return isBleReady(peerID) || isWifiReady(peerID)
     }
 
     override fun getSessionState(peerID: String): NoiseSession.NoiseSessionState {
+        val mirrored = LinkController.mirrorPeers.value?.firstOrNull { it.peerID == peerID }
+        if (mirrored != null && mirrored.hasSession) return NoiseSession.NoiseSessionState.Established
         val bleState = try { bluetooth.getSessionState(peerID) } catch (_: Exception) { NoiseSession.NoiseSessionState.Uninitialized }
         val wifiState = try { wifiService()?.getSessionState(peerID) } catch (_: Exception) { null }
         return when {
@@ -302,6 +348,24 @@ class UnifiedMeshService(
     }
 
     override fun getPeerInfo(peerID: String): PeerInfo? {
+        val mirrored = LinkController.mirrorPeers.value?.firstOrNull { it.peerID == peerID }
+        if (mirrored != null) {
+            val noiseKey = mirrored.noiseKeyHex?.let { hex ->
+                if (hex.length % 2 == 0) runCatching {
+                    ByteArray(hex.length / 2) { i -> hex.substring(i * 2, i * 2 + 2).toInt(16).toByte() }
+                }.getOrNull() else null
+            }
+            return PeerInfo(
+                id = mirrored.peerID,
+                nickname = mirrored.nickname,
+                isConnected = mirrored.connected,
+                isDirectConnection = mirrored.connected,
+                noisePublicKey = noiseKey,
+                signingPublicKey = null,
+                isVerifiedNickname = false,
+                lastSeen = System.currentTimeMillis()
+            )
+        }
         val ble = try { bluetooth.getPeerInfo(peerID) } catch (_: Exception) { null }
         val wifi = try { wifiService()?.getPeerInfo(peerID) } catch (_: Exception) { null }
         return when {
@@ -441,9 +505,16 @@ class UnifiedMeshService(
     private fun mergedPeerIDs(): List<String> {
         val ids = linkedSetOf<String>()
         try { ids.addAll(com.bitchat.android.services.AppStateStore.peers.value) } catch (_: Exception) { }
+        LinkController.mirrorPeers.value?.forEach { ids.add(it.peerID) }
         try { ids.addAll(bluetooth.getPeerNicknames().keys) } catch (_: Exception) { }
         try { ids.addAll(wifiService()?.getPeerNicknames()?.keys.orEmpty()) } catch (_: Exception) { }
         return ids.toList()
+    }
+
+    private fun kindForMime(mimeType: String): String = when {
+        mimeType.startsWith("image/") -> "image"
+        mimeType.startsWith("audio/") -> "audio"
+        else -> "file"
     }
 
     /**

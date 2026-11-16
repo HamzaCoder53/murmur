@@ -1436,6 +1436,10 @@ class ChatViewModel(
             com.bitchat.android.wearlink.WearLinkController.getService()
                 ?.linkCoordinator?.wipeLinkedWatches()
         } catch (_: Exception) { }
+        // Skein: linked phones/tablets sharing this identity erase it too (or keep pending wipe).
+        try {
+            com.bitchat.android.linked.LinkController.panicWipeAll()
+        } catch (_: Exception) { }
         // The watch link holds the old identity in memory; recreateMeshServiceAfterPanic()
         // starts a fresh one with the new keys.
         try { com.bitchat.android.wearlink.WearLinkController.stop() } catch (_: Exception) { }

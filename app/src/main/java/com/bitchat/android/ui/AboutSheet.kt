@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Public
@@ -346,6 +347,7 @@ fun AboutSheet(
         mutableStateOf(LanguagePreferenceManager.currentLanguageTag())
     }
     var showLanguagePicker by remember { mutableStateOf(false) }
+    var showLinkedDevices by remember { mutableStateOf(false) }
 
     if (isPresented) {
         BitchatBottomSheet(
@@ -1336,6 +1338,72 @@ fun AboutSheet(
                         }
                     }
 
+                    // Linked devices
+                    item(key = "linked_devices") {
+                        LaunchedEffect(Unit) {
+                            com.bitchat.android.linked.LinkController.initialize(context)
+                        }
+                        val linkedDevices by (
+                            com.bitchat.android.linked.LinkController.coordinator?.devices
+                                ?.collectAsStateWithLifecycle()
+                                ?: remember { mutableStateOf(emptyList()) }
+                        )
+                        Column(modifier = Modifier.padding(top = 12.dp)) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = AboutHorizontalPadding),
+                                color = colorScheme.surface,
+                                shape = AboutCardShape,
+                                onClick = { showLinkedDevices = true }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Devices,
+                                        contentDescription = null,
+                                        tint = colorScheme.primary,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(14.dp))
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.linked_devices_title),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Medium,
+                                            color = colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = if (linkedDevices.isEmpty()) {
+                                                stringResource(R.string.linked_devices_subtitle_none)
+                                            } else {
+                                                stringResource(
+                                                    R.string.linked_devices_subtitle_count,
+                                                    linkedDevices.size
+                                                )
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = colorScheme.onSurface.copy(alpha = 0.6f)
+                                        )
+                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.ChevronRight,
+                                        contentDescription = null,
+                                        tint = colorScheme.onSurface.copy(alpha = 0.4f),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     } // end Settings tab
 
                     // Footer
@@ -1390,6 +1458,10 @@ fun AboutSheet(
                 }
             }
         }
+        LinkedDevicesSheet(
+            isPresented = showLinkedDevices,
+            onDismiss = { showLinkedDevices = false }
+        )
     }
 }
 
