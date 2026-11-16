@@ -51,7 +51,12 @@ class DesktopPlatform(
                 )
                 InMemoryKeyStore()
             }
-            return DesktopPlatform(paths = paths, keyStore = keyStore)
+            val crashReporter = com.bitchat.desktop.sentry.SentryCrashReporter(
+                contextProvider = { android.content.Context(paths.dataDir) },
+            ).apply {
+                init(release = System.getProperty("skein.version") ?: "1.0.0")
+            }
+            return DesktopPlatform(paths = paths, keyStore = keyStore, crashReporter = crashReporter)
         }
     }
 }
