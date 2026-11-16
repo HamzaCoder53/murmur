@@ -143,3 +143,16 @@ class AndroidBackupTest {
         assertFalse(staged.exists())
     }
 }
+
+class SkeinBackupAgentTransportTest {
+    @org.junit.Test
+    fun `snapshot only goes to end-to-end encrypted or device-to-device backups`() {
+        org.junit.Assert.assertFalse(SkeinBackupAgent.isProtectedTransport(0))
+        org.junit.Assert.assertTrue(
+            SkeinBackupAgent.isProtectedTransport(android.app.backup.BackupAgent.FLAG_CLIENT_SIDE_ENCRYPTION_ENABLED)
+        )
+        org.junit.Assert.assertTrue(
+            SkeinBackupAgent.isProtectedTransport(android.app.backup.BackupAgent.FLAG_DEVICE_TO_DEVICE_TRANSFER)
+        )
+    }
+}

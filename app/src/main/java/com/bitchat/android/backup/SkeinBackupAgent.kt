@@ -3,123 +3,98 @@ package com.bitchat.android.backup
 import android.app.backup.BackupAgent
 import android.app.backup.BackupDataInput
 import android.app.backup.BackupDataOutput
-import android.app.backup.FullBackupDataOutput
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import kotlinx.coroutines.runBlocking
+import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
 
 /**
- * Custom [BackupAgent] for opt-in Android Auto Backup.
+ * Opt-in Android backup, as a key-value backup of one entity: an encrypted portable snapshot of
+ * the identity and text chats (see [AndroidBackupArchive]).
  *
- * Raw app-private storage (`shared_prefs`, `databases`, `files`) remains excluded by
- * `backup_rules.xml` and `data_extraction_rules.xml`. When enabled by the user, [onFullBackup]
- * packages a portable encrypted snapshot of the identity and text chats (without media) and
- * streams only that file. On restore, [onRestoreFile] saves it to a pending file applied by
- * [AndroidBackupRestorer.restoreIfPending] before services initialize.
+ * Key-value backup is used on purpose: file-based Auto Backup is filtered by the deny-by-default
+ * rules in data_extraction_rules.xml / backup_rules.xml, which must keep excluding every raw
+ * app-private file. Here nothing but this one snapshot can leave the device.
+ *
+ * The snapshot carries its own key, so it is only handed over when Android itself protects it:
+ * a cloud backup that Android encrypts end to end with the screen lock, or a direct
+ * device-to-device transfer. Otherwise nothing is backed up.
  */
 class SkeinBackupAgent : BackupAgent() {
 
     override fun onBackup(
         oldState: ParcelFileDescriptor?,
-        data: BackupDataOutput?,
+        data: BackupDataOutput,
         newState: ParcelFileDescriptor?
-    ) = Unit
-
-    override fun onRestore(
-        data: BackupDataInput?,
-        appVersionCode: Int,
-        newState: ParcelFileDescriptor?
-    ) = Unit
-
-    override fun onFullBackup(data: FullBackupDataOutput) {
+    ) {
         val app = applicationContext
-        if (!AndroidBackupPreferences.isEnabled(app)) return
-        val staged = AndroidBackupRestorer.stagedBackupFile(app)
+        if (!AndroidBackupPreferences.isEnabled(app)) {
+            // Writing a delete replaces any snapshot from before the switch was turned off.
+            data.writeEntityHeader(ENTITY_KEY, -1)
+            return
+        }
+        if (!isProtectedTransport(data.transportFlags)) {
+            Log.w(TAG, "Android backup skipped: not end-to-end encrypted or device-to-device")
+            return
+        }
         try {
             val identity = DeviceBackup.readIdentity(app) ?: return
             val conversations = runBlocking { DeviceBackup.collectConversations(app) }
-            val content = BackupContent(
-                conversations = conversations,
-                identity = identity,
-                kind = SkeinArchive.Kind.EXPORT,
-                mediaFile = { null }
-            )
-            staged.parentFile?.mkdirs()
-            staged.outputStream().buffered().use { out ->
-                AndroidBackupArchive.write(out, content)
+            var bytes = encode(BackupContent(conversations, identity, SkeinArchive.Kind.EXPORT) { null })
+            if (bytes.size > MAX_ENTITY_BYTES) {
+                Log.w(TAG, "Chats exceed the Android backup quota; backing up the identity only")
+                bytes = encode(BackupContent(emptyList(), identity, SkeinArchive.Kind.EXPORT) { null })
             }
-            if (staged.length() > AndroidBackupArchive.MAX_BACKUP_BYTES) {
-                Log.w(TAG, "Android backup skipped: archive exceeds 24 MB quota")
-                return
-            }
-            fullBackupFile(staged, data)
+            if (bytes.size > MAX_ENTITY_BYTES) return
+            data.writeEntityHeader(ENTITY_KEY, bytes.size)
+            data.writeEntityData(bytes, bytes.size)
         } catch (e: Exception) {
-            Log.w(TAG, "Android full backup failed: ${e.javaClass.simpleName}")
-        } finally {
-            staged.delete()
+            Log.w(TAG, "Android backup failed: ${e.javaClass.simpleName}")
         }
     }
 
-    override fun onRestoreFile(
-        data: ParcelFileDescriptor,
-        size: Long,
-        destination: File,
-        type: Int,
-        mode: Long,
-        mtime: Long
-    ) {
-        val isExpected = destination.name == AndroidBackupRestorer.BACKUP_FILE_NAME &&
-            size in 1L..AndroidBackupArchive.MAX_BACKUP_BYTES
-        FileInputStream(data.fileDescriptor).use { input ->
-            if (!isExpected) {
-                drainBytes(input, size)
-                return
+    override fun onRestore(data: BackupDataInput, appVersionCode: Int, newState: ParcelFileDescriptor?) {
+        while (data.readNextHeader()) {
+            val size = data.dataSize
+            if (data.key != ENTITY_KEY || size <= 0 || size > MAX_ENTITY_BYTES) {
+                data.skipEntityData()
+                continue
             }
+            val bytes = ByteArray(size)
+            data.readEntityData(bytes, 0, size)
             val pending = AndroidBackupRestorer.pendingRestoreFile(applicationContext)
             val tmp = File(pending.parentFile, "${pending.name}.tmp")
-            tmp.parentFile?.mkdirs()
-            var copied = 0L
             try {
-                FileOutputStream(tmp).use { out ->
-                    val buf = ByteArray(DEFAULT_BUFFER_SIZE)
-                    while (copied < size) {
-                        val toRead = minOf(buf.size.toLong(), size - copied).toInt()
-                        val n = input.read(buf, 0, toRead)
-                        if (n <= 0) break
-                        out.write(buf, 0, n)
-                        copied += n
-                    }
-                }
-                if (copied == size) {
-                    if (pending.exists()) pending.delete()
-                    if (!tmp.renameTo(pending)) {
-                        tmp.copyTo(pending, overwrite = true)
-                        tmp.delete()
-                    }
-                } else {
+                tmp.parentFile?.mkdirs()
+                tmp.writeBytes(bytes)
+                if (pending.exists()) pending.delete()
+                if (!tmp.renameTo(pending)) {
+                    tmp.copyTo(pending, overwrite = true)
                     tmp.delete()
                 }
             } catch (e: Exception) {
                 tmp.delete()
-                Log.w(TAG, "Android restore file failed: ${e.javaClass.simpleName}")
+                Log.w(TAG, "Android restore failed: ${e.javaClass.simpleName}")
+            } finally {
+                bytes.fill(0)
             }
         }
     }
 
-    private fun drainBytes(input: FileInputStream, size: Long) {
-        var remaining = size
-        val buf = ByteArray(DEFAULT_BUFFER_SIZE)
-        while (remaining > 0) {
-            val n = input.read(buf, 0, minOf(buf.size.toLong(), remaining).toInt())
-            if (n <= 0) break
-            remaining -= n
-        }
-    }
+    private fun encode(content: BackupContent): ByteArray =
+        ByteArrayOutputStream().also { AndroidBackupArchive.write(it, content) }.toByteArray()
 
     companion object {
         private const val TAG = "SkeinBackupAgent"
+        const val ENTITY_KEY = "skein_snapshot"
+
+        /** Android's key-value backup quota is 5 MB per app; leave room for overhead. */
+        const val MAX_ENTITY_BYTES = 4_500_000
+
+        /** Only a backup Android encrypts end to end, or a direct phone-to-phone transfer. */
+        fun isProtectedTransport(flags: Int): Boolean =
+            flags and BackupAgent.FLAG_CLIENT_SIDE_ENCRYPTION_ENABLED != 0 ||
+                flags and BackupAgent.FLAG_DEVICE_TO_DEVICE_TRANSFER != 0
     }
 }

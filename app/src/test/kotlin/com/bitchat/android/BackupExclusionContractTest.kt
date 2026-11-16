@@ -92,7 +92,8 @@ class BackupExclusionContractTest {
         val text = manifest.readText()
         assertTrue(text.contains("""android:allowBackup="true""""))
         assertTrue(text.contains("""android:backupAgent="com.bitchat.android.backup.SkeinBackupAgent""""))
-        assertTrue(text.contains("""android:fullBackupOnly="true""""))
+        // Key-value backup only: file-based Auto Backup stays governed by the deny-all rules.
+        assertFalse(text.contains("""android:fullBackupOnly="true""""))
         assertTrue(text.contains("""android:dataExtractionRules="@xml/data_extraction_rules""""))
         assertTrue(text.contains("""android:fullBackupContent="@xml/backup_rules""""))
     }
