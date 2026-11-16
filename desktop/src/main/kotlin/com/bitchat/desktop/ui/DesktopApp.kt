@@ -22,25 +22,30 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.bitchat.android.linked.PrefsLinkStore
+import com.bitchat.android.services.AppStateStore
+import com.bitchat.desktop.DesktopRestart
 import com.bitchat.desktop.ble.BleMeshTransport
 import com.bitchat.desktop.core.DesktopIdentity
 import com.bitchat.desktop.core.DesktopMeshNode
 import com.bitchat.desktop.core.LoopbackHub
+import com.bitchat.desktop.link.DesktopLinkController
+import com.bitchat.desktop.link.DesktopLinkedAppBridge
 import com.bitchat.desktop.platform.DesktopPlatform
 import com.bitchat.desktop.platform.NoopBleTransport
+import com.bitchat.desktop.storage.DesktopContactsStore
+import com.bitchat.desktop.storage.EncryptedHistoryStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import com.bitchat.desktop.storage.DesktopContactsStore
-import com.bitchat.desktop.storage.EncryptedHistoryStore
+import kotlinx.coroutines.launch
 
 /**
  * Hook for other desktop builders: replace in-memory ports with real ones (DesktopStore history
  * and contacts, Nostr location channels, linking/backup panels) before the window opens.
- * Keep each builder's change to one line here.
  */
 typealias PortsCustomizer = (ports: SkeinPorts, context: Context, platform: DesktopPlatform) -> SkeinPorts
 
@@ -72,6 +77,7 @@ fun runDesktopApp(
         loopbackTransport = lt
         n
     }
+
     val settingsPort = PrefsSettingsPort(ctx)
     val initialSettings = settingsPort.load()
     applyDockPreference(initialSettings)
@@ -87,7 +93,54 @@ fun runDesktopApp(
     node.peers.onEach { ids ->
         ids.forEach { contactsStore.promotePending(it, node.peerNickname(it) ?: it.take(8)) }
     }.launchIn(appScope)
+
+    // Keep AppStateStore in sync for linked devices and encrypted backups.
+    AppStateStore.setNickname(identity.nickname)
+    node.messageSink = { msg, conversation ->
+        if (conversation == null) {
+            AppStateStore.addPublicMessage(msg)
+        } else {
+            AppStateStore.addPrivateMessage(conversation, msg, forceRead = msg.senderPeerID == identity.peerID)
+        }
+    }
+    appScope.launch { node.peers.collect { AppStateStore.setTransportPeers("mesh", it) } }
     node.start()
+
+    val link: DesktopLinkController? = try {
+        val bridge = DesktopLinkedAppBridge(
+            identity = identity,
+            node = node,
+            onRestartRequested = { DesktopRestart.relaunch() },
+            onRadiosSuppressedChanged = { suppressed ->
+                // A following computer lets the leading device's radios speak for the identity.
+                if (suppressed) bleTransport?.stop() else bleTransport?.start()
+            },
+        )
+        DesktopLinkController(appScope, PrefsLinkStore(ctx), bridge, platform.discovery).also { it.startIfNeeded() }
+    } catch (e: Exception) {
+        android.util.Log.w("DesktopApp", "Linked devices unavailable: ${e.javaClass.simpleName}")
+        null
+    }
+
+    val panels = object : FeaturePanels {
+        @Composable
+        override fun LinkedDevices(strings: UiStrings) {
+            val lang = if (strings.appTitle == "سكين") AppLanguage.ARABIC else AppLanguage.ENGLISH
+            LinkedDevicesScreen(link = link, strings = strings, ls = linkBackupStringsFor(lang))
+        }
+
+        @Composable
+        override fun Backups(strings: UiStrings) {
+            val lang = if (strings.appTitle == "سكين") AppLanguage.ARABIC else AppLanguage.ENGLISH
+            BackupsScreen(
+                context = ctx,
+                nickname = { identity.nickname },
+                strings = strings,
+                ls = linkBackupStringsFor(lang),
+                onIdentityRestored = { DesktopRestart.relaunch() },
+            )
+        }
+    }
 
     val ports = customizePorts(
         SkeinPorts(
@@ -97,6 +150,7 @@ fun runDesktopApp(
             locations = InMemoryLocationChannelsPort(myNickname = { identity.nickname }),
             settings = settingsPort,
             platform = DesktopPlatformToggles(platform),
+            panels = panels,
             appInfo = AppInfo(version = System.getProperty("skein.version") ?: AppInfo().version),
         ),
         ctx,
@@ -108,6 +162,8 @@ fun runDesktopApp(
         var windowVisible by remember { mutableStateOf(!startHidden) }
         val shutdown = {
             platform.tray.hide()
+            link?.stop()
+            (platform.discovery as? AutoCloseable)?.close()
             node.stop()
             runCatching { historyStore.close() }
             contactsStore.close()

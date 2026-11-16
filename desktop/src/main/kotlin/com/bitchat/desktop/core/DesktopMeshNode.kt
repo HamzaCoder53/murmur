@@ -5,6 +5,7 @@ import com.bitchat.android.mesh.DirectLinkAnnouncementPolicy
 import com.bitchat.android.mesh.MeshCore
 import com.bitchat.android.mesh.MeshDelegate
 import com.bitchat.android.mesh.MeshTransport
+import com.bitchat.android.model.BitchatFilePacket
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.DeliveryStatus
 import com.bitchat.android.protocol.BitchatPacket
@@ -58,6 +59,14 @@ class DesktopMeshNode(
 
     val peerID: String get() = identity.peerID
 
+    /**
+     * Receives every message this node shows (sent or received) with its private conversation
+     * (the other peer's ID; null for public). The app points it at AppStateStore, the store the
+     * UI, linked devices and backups share.
+     */
+    @Volatile
+    var messageSink: ((BitchatMessage, String?) -> Unit)? = null
+
     init {
         FavoritesPersistenceService.initialize(identity.context)
     }
@@ -92,7 +101,7 @@ class DesktopMeshNode(
         core.delegate = object : MeshDelegate {
             override fun didReceiveMessage(message: BitchatMessage) {
                 if (message.isPrivate) {
-                    message.senderPeerID?.let { addPrivate(it, message, read = false) }
+                    addPrivate(message.senderPeerID ?: message.sender, message, read = false)
                 } else {
                     addPublic(message)
                 }
@@ -141,18 +150,26 @@ class DesktopMeshNode(
         announce()
     }
 
-    fun sendPublic(text: String, messageID: String = UUID.randomUUID().toString()) {
+    /** [messageID] keeps a linked device's ID for its message, so every copy merges by ID. */
+    fun sendPublic(
+        text: String,
+        messageID: String? = null,
+        mentions: List<String> = emptyList(),
+        channel: String? = null,
+    ) {
         if (text.isEmpty()) return
         val local = BitchatMessage(
-            id = messageID,
+            id = messageID ?: UUID.randomUUID().toString(),
             sender = identity.nickname,
             content = text,
             timestamp = Date(),
             isPrivate = false,
             senderPeerID = identity.peerID,
+            mentions = mentions.takeIf { it.isNotEmpty() },
+            channel = channel,
         )
         addPublic(local)
-        core.sendMessage(text)
+        core.sendMessage(text, mentions, channel)
     }
 
     /**
@@ -163,11 +180,12 @@ class DesktopMeshNode(
         text: String,
         recipientPeerID: String,
         recipientNickname: String,
-        messageID: String = UUID.randomUUID().toString(),
+        messageID: String? = null,
     ) {
         if (text.isEmpty()) return
+        val id = messageID ?: UUID.randomUUID().toString()
         val local = BitchatMessage(
-            id = messageID,
+            id = id,
             sender = identity.nickname,
             content = text,
             timestamp = Date(),
@@ -177,13 +195,18 @@ class DesktopMeshNode(
             deliveryStatus = DeliveryStatus.Sent,
         )
         addPrivate(recipientPeerID, local, read = true)
-        core.sendPrivateMessage(text, recipientPeerID, recipientNickname, messageID)
+        core.sendPrivateMessage(text, recipientPeerID, recipientNickname, id)
     }
 
-    /**
-     * Loads saved or synced messages without sending anything. [conversation] is null for the
-     * public mesh timeline, otherwise the other party's peer ID. Duplicates are ignored.
-     */
+    fun sendReadReceipt(messageID: String, recipientPeerID: String) =
+        core.sendReadReceipt(messageID, recipientPeerID, identity.nickname)
+
+    /** Broadcasts [file] when [recipientPeerID] is null or blank, else sends it privately. */
+    fun sendFile(recipientPeerID: String?, file: BitchatFilePacket) {
+        if (recipientPeerID.isNullOrBlank()) core.sendFileBroadcast(file) else core.sendFilePrivate(recipientPeerID, file)
+    }
+
+    /** Loads saved or synced messages without sending anything. */
     fun restore(conversation: String?, message: BitchatMessage, read: Boolean = true) {
         if (conversation == null) addPublic(message) else addPrivate(conversation, message, read)
     }
@@ -192,25 +215,30 @@ class DesktopMeshNode(
         _readPrivateIDs.value = _readPrivateIDs.value + messageIDs
     }
 
-    private fun addPublic(message: BitchatMessage) = synchronized(lock) {
-        val list = _publicMessages.value
-        if (list.none { it.id == message.id }) {
+    private fun addPublic(message: BitchatMessage) {
+        synchronized(lock) {
+            val list = _publicMessages.value
+            if (list.any { it.id == message.id }) return
             _publicMessages.value = (list + message).sortedBy { it.timestamp.time }.takeLast(MAX_MESSAGES)
         }
+        messageSink?.invoke(message, null)
     }
 
-    private fun addPrivate(peerID: String, message: BitchatMessage, read: Boolean) = synchronized(lock) {
-        val flat = _privateMessages.value
-        if (flat.any { it.id == message.id }) return@synchronized
-        _privateMessages.value = (flat + message).takeLast(MAX_MESSAGES)
-        val chats = _privateChats.value.toMutableMap()
-        chats[peerID] = ((chats[peerID] ?: emptyList()) + message)
-            .sortedBy { it.timestamp.time }
-            .takeLast(MAX_MESSAGES)
-        _privateChats.value = chats
-        if (read || message.senderPeerID == identity.peerID) {
-            _readPrivateIDs.value = _readPrivateIDs.value + message.id
+    private fun addPrivate(peerID: String, message: BitchatMessage, read: Boolean) {
+        synchronized(lock) {
+            val flat = _privateMessages.value
+            if (flat.any { it.id == message.id }) return
+            _privateMessages.value = (flat + message).takeLast(MAX_MESSAGES)
+            val chats = _privateChats.value.toMutableMap()
+            chats[peerID] = ((chats[peerID] ?: emptyList()) + message)
+                .sortedBy { it.timestamp.time }
+                .takeLast(MAX_MESSAGES)
+            _privateChats.value = chats
+            if (read || message.senderPeerID == identity.peerID) {
+                _readPrivateIDs.value = _readPrivateIDs.value + message.id
+            }
         }
+        messageSink?.invoke(message, peerID)
     }
 
     /** Applies a delivery update; a read receipt is never downgraded by a late delivery ack. */

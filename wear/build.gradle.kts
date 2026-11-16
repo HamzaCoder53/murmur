@@ -143,6 +143,7 @@ val sharedSourceIncludes = listOf(
     "com/bitchat/android/linked/LinkProtocol.kt",
     "com/bitchat/android/linked/LinkQr.kt",
     "com/bitchat/android/linked/LinkSession.kt",
+    "com/bitchat/android/linked/LinkSocketEngine.kt",
     "com/bitchat/android/linked/LinkStore.kt",
     "com/bitchat/android/linked/LinkTransport.kt",
     "com/bitchat/android/linked/LinkedAppBridge.kt",
