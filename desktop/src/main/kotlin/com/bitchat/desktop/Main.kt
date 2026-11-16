@@ -3,6 +3,7 @@ package com.bitchat.desktop
 import android.content.Context
 import com.bitchat.desktop.core.DesktopIdentity
 import com.bitchat.desktop.platform.AppPaths
+import com.bitchat.desktop.platform.CrashWatchdog
 import com.bitchat.desktop.platform.DesktopPlatform
 import com.bitchat.desktop.platform.InMemoryKeyStore
 import com.bitchat.desktop.shim.OwnerOnlyFiles
@@ -27,6 +28,12 @@ fun main(args: Array<String>) {
     if ("--smoke" in args) {
         exitProcess(runSmoke())
     }
+    if ("--watchdog" in args) {
+        val exe = ProcessHandle.current().info().command().orElse("java")
+        val childArgs = args.filter { it != "--watchdog" }
+        exitProcess(CrashWatchdog.run(listOf(exe) + childArgs))
+    }
+    val startHidden = "--autostart" in args
     val paths = AppPaths.forCurrentHost()
     val instanceLock = acquireInstanceLock(paths.dataDir)
     if (instanceLock == null) {
@@ -38,8 +45,9 @@ fun main(args: Array<String>) {
         platform.crashReporter.capture(e)
     }
     try {
-        runDesktopApp(platform)
+        runDesktopApp(platform, startHidden = startHidden)
     } finally {
+        try { platform.tray.hide() } catch (_: Exception) { }
         try { platform.crashReporter.flush() } catch (_: Exception) { }
         try { platform.crashReporter.close() } catch (_: Exception) { }
         try { instanceLock.close() } catch (_: Exception) { }

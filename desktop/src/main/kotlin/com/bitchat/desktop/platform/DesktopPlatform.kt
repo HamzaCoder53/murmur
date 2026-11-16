@@ -38,20 +38,35 @@ class DesktopPlatform(
         fun forCurrentHost(dataDirOverride: File? = null): DesktopPlatform {
             val paths = AppPaths.forCurrentHost(dataDirOverride)
             val allowInsecure = System.getProperty(ALLOW_INSECURE_KEYSTORE_PROP)?.toBoolean() == true
-            val keyStore = if (allowInsecure) {
-                android.util.Log.w(
-                    "DesktopPlatform",
-                    "Using insecure FileKeyStore under ${paths.secretsDir.name} (dev opt-in via -D$ALLOW_INSECURE_KEYSTORE_PROP=true)",
-                )
-                FileKeyStore(paths.secretsDir)
-            } else {
-                android.util.Log.w(
-                    "DesktopPlatform",
-                    "OS Keychain/DPAPI not yet wired; using InMemoryKeyStore (keys are not persisted across restarts)",
-                )
-                InMemoryKeyStore()
+            val os = HostOs.current()
+            val keyStore: SecureKeyStore = when {
+                allowInsecure -> {
+                    android.util.Log.w(
+                        "DesktopPlatform",
+                        "Using insecure FileKeyStore under ${paths.secretsDir.name} (dev opt-in via -D$ALLOW_INSECURE_KEYSTORE_PROP=true)",
+                    )
+                    FileKeyStore(paths.secretsDir)
+                }
+                os == HostOs.MAC -> MacKeychainKeyStore()
+                os == HostOs.WINDOWS -> WindowsDpapiKeyStore(paths.secretsDir)
+                else -> {
+                    android.util.Log.w(
+                        "DesktopPlatform",
+                        "No OS credential store on $os; using InMemoryKeyStore",
+                    )
+                    InMemoryKeyStore()
+                }
             }
-            return DesktopPlatform(paths = paths, keyStore = keyStore)
+            val tray = AwtTrayController()
+            val notifications = OsNotifier(tray = tray, hostOs = os)
+            val autostart = OsAutostartController(hostOs = os)
+            return DesktopPlatform(
+                paths = paths,
+                keyStore = keyStore,
+                notifications = notifications,
+                tray = tray,
+                autostart = autostart,
+            )
         }
     }
 }
