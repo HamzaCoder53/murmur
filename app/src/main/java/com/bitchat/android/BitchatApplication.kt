@@ -81,6 +81,9 @@ class BitchatApplication : Application() {
         // Local Wi-Fi mesh toggle (off by default); the mesh service starts it when enabled.
         try { com.bitchat.android.lan.LanController.initialize() } catch (_: Exception) { }
 
+        // Linked devices (phones/tablets sharing this identity); starts if linked or pending wipes.
+        try { com.bitchat.android.linked.LinkController.initialize(this) } catch (_: Exception) { }
+
         // Initialize Geohash Registries for persistence
         try {
             com.bitchat.android.nostr.GeohashAliasRegistry.initialize(this)
