@@ -190,6 +190,21 @@ class SecondaryMeshServiceTest {
     }
 
     @Test
+    fun `the local Wi-Fi mesh joins the secondary transports when running`() {
+        val lan: MeshService = mock()
+        val lanPeer = "4444444444444444"
+        val withLan = SecondaryMeshService(wifi = { null }, wear = { null }, lan = { lan })
+        connected(lan, lanPeer, session = true)
+
+        assertTrue(withLan.hasAny())
+        withLan.sendPrivateMessage("hi", lanPeer, "friend", "m3")
+        withLan.sendMessage("public", emptyList(), null)
+
+        verify(lan).sendPrivateMessage("hi", lanPeer, "friend", "m3")
+        verify(lan).sendMessage("public", emptyList(), null)
+    }
+
+    @Test
     fun `start and stop do not touch the transports`() {
         secondary.startServices()
         secondary.stopServices()

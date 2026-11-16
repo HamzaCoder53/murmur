@@ -31,6 +31,11 @@
         android:usesPermissionFlags="neverForLocation" />
     <!-- Android 17+ gates local network access; Wi‑Fi Aware peers over link-local IPv6 -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+    <!-- Local Wi-Fi mesh: DNS-SD discovery may miss multicast replies on older releases
+         unless a multicast lock is held; Android 14+ needs no lock. -->
+    <uses-permission
+        android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"
+        android:maxSdkVersion="33" />
     <!-- Keep hotspot alive while sharing the APK -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 

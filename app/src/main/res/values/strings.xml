@@ -688,4 +688,7 @@
   <string name="radio_power_low">Low</string>
   <string name="radio_power_medium">Medium</string>
   <string name="radio_power_high">High</string>
+  <string name="lan_mesh_title" tools:ignore="MissingTranslation">Local Wi-Fi mesh</string>
+  <string name="lan_mesh_description" tools:ignore="MissingTranslation">Reach Skein users on the same Wi-Fi, even without internet. Not on public Wi-Fi.</string>
+  <string name="lan_mesh_permission_denied" tools:ignore="MissingTranslation">Local Wi-Fi mesh needs the local network permission</string>
 </resources>

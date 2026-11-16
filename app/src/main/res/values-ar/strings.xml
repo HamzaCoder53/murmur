@@ -420,4 +420,7 @@
   <string name="radio_power_low">منخفضة</string>
   <string name="radio_power_medium">متوسطة</string>
   <string name="radio_power_high">عالية</string>
+  <string name="lan_mesh_title">شبكة Wi-Fi المحلية</string>
+  <string name="lan_mesh_description">تواصَل مع مستخدمي Skein على شبكة Wi-Fi نفسها، حتى دون اتصال بالإنترنت. لا تستخدمها على شبكات Wi-Fi العامة.</string>
+  <string name="lan_mesh_permission_denied">تحتاج شبكة Wi-Fi المحلية إلى إذن الوصول إلى الشبكة المحلية</string>
 </resources>
