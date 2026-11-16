@@ -98,6 +98,8 @@ fun LinkedDevicesSheet(
     var pendingUnlink by remember { mutableStateOf<LinkedDevice?>(null) }
     var confirmLeave by remember { mutableStateOf(false) }
 
+    val cameraPermissionText = androidx.compose.ui.res.stringResource(R.string.linked_devices_camera_permission)
+    val invalidQrText = androidx.compose.ui.res.stringResource(R.string.linked_devices_invalid_qr)
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -105,7 +107,7 @@ fun LinkedDevicesSheet(
             scanning = true
             scanError = null
         } else {
-            scanError = context.getString(R.string.linked_devices_camera_permission)
+            scanError = cameraPermissionText
         }
     }
 
@@ -199,7 +201,7 @@ fun LinkedDevicesSheet(
                                             scanning = false
                                             scanError = null
                                         } else {
-                                            scanError = context.getString(R.string.linked_devices_invalid_qr)
+                                            scanError = invalidQrText
                                         }
                                     }
                                 }

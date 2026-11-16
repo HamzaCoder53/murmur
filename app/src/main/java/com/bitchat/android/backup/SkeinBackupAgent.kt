@@ -34,7 +34,10 @@ class SkeinBackupAgent : BackupAgent() {
             data.writeEntityHeader(ENTITY_KEY, -1)
             return
         }
-        if (!isProtectedTransport(data.transportFlags)) {
+        // Android 8 cannot say how a backup is protected, and does not encrypt it end to end.
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.P ||
+            !isProtectedTransport(data.transportFlags)
+        ) {
             Log.w(TAG, "Android backup skipped: not end-to-end encrypted or device-to-device")
             return
         }
