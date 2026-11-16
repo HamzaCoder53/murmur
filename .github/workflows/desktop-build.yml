@@ -1,0 +1,93 @@
+name: Desktop Build (macOS + Windows)
+
+on:
+  push:
+    branches: ["desktop/**"]
+    tags: ["desktop-v*"]
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "app/src/main/java/**"
+      - ".github/workflows/desktop-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & Package (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: macos_arm64
+            format: Dmg
+            rid: osx-arm64
+          - os: macos-15-intel
+            target: macos_x64
+            format: Dmg
+            rid: osx-x64
+          - os: windows-latest
+            target: windows_x64
+            format: Msi
+            rid: win-x64
+          - os: windows-11-arm
+            target: windows_arm64
+            format: Msi
+            rid: win-arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+
+      - name: Build macOS Swift BLE helper
+        if: runner.os == 'macOS'
+        run: |
+          if [ -f desktop/ble-mac/Sources/main.swift ]; then
+            mkdir -p desktop/build/ble-mac
+            swiftc -O -framework CoreBluetooth -framework Foundation \
+              desktop/ble-mac/Sources/main.swift \
+              -o desktop/build/ble-mac/skein-ble-mac
+          fi
+
+      - name: Build Windows WinRT BLE helper
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (Test-Path desktop/ble-windows/SkeinBleWindows.csproj) {
+            dotnet publish desktop/ble-windows/SkeinBleWindows.csproj `
+              -c Release -r ${{ matrix.rid }} --self-contained true `
+              -p:PublishSingleFile=true `
+              -o desktop/build/ble-windows
+          }
+
+      - name: Run desktop unit tests & smoke check
+        env:
+          SKEIN_SENTRY_DSN: ${{ secrets.SKEIN_SENTRY_DSN }}
+        run: ./gradlew :desktop:test :desktop:run --args=--smoke --no-daemon
+
+      - name: Package native installer (${{ matrix.format }})
+        env:
+          SKEIN_SENTRY_DSN: ${{ secrets.SKEIN_SENTRY_DSN }}
+        run: ./gradlew :desktop:package${{ matrix.format }} -PskeinTarget=${{ matrix.target }} --no-daemon
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: skein-desktop-${{ matrix.target }}
+          path: |
+            desktop/build/compose/binaries/main/dmg/*.dmg
+            desktop/build/compose/binaries/main/msi/*.msi
+          if-no-files-found: error
