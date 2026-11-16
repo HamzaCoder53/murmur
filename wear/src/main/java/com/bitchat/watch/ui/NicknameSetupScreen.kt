@@ -74,18 +74,7 @@ fun NicknameSetupScreen(
             )
         )
     }
-    val focusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val interactionSource = remember { MutableInteractionSource() }
-    val focused by interactionSource.collectIsFocusedAsState()
-    val outline by animateColorAsState(
-        targetValue =
-            if (focused) MaterialTheme.colorScheme.primary else palette.inputOutlineFocused,
-        animationSpec = tween(BitchatMotion.STANDARD_MS),
-        label = "nicknameOutline",
-    )
 
-    LaunchedEffect(autoFocus) { if (autoFocus) focusRequester.requestFocus() }
 
     WearFormScreen(
         edgeButton = {
@@ -98,58 +87,44 @@ fun NicknameSetupScreen(
     ) {
         formHeader(title = title, body = subtitle)
         item {
-            // Watch-sized fields have no use for a draggable cursor handle; it only covers text.
-            CompositionLocalProvider(
-                LocalTextSelectionColors provides HiddenHandleSelectionColors
+            val context = androidx.compose.ui.platform.LocalContext.current
+            var field by remember { mutableStateOf<android.widget.EditText?>(null) }
+            Box(
+                modifier = Modifier.fillMaxWidth()
+                    .padding(top = 6.dp)
+                    .clip(FieldShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .border(1.dp, MaterialTheme.colorScheme.primary, FieldShape)
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                contentAlignment = Alignment.Center
             ) {
-                BasicTextField(
-                    value = name,
-                    onValueChange = { newValue ->
-                        val trimmed = newValue.text.trim().take(24)
-                        name =
-                            if (trimmed == newValue.text) {
-                                newValue
-                            } else {
-                                newValue.copy(text = trimmed, selection = TextRange(trimmed.length))
-                            }
+                // A platform field, so full-screen watch keyboards show what is typed (see WatchEditText).
+                WatchEditText(
+                    text = name.text,
+                    onTextChange = { typed ->
+                        val trimmed = typed.trim().take(24)
+                        name = TextFieldValue(trimmed, TextRange(trimmed.length))
                     },
-                    singleLine = true,
-                    textStyle =
-                        ChatVisualTokens.MessageBodyStyle.copy(
-                            color = MaterialTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.Center,
-                        ),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { keyboardController?.hide() }),
-                    interactionSource = interactionSource,
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .padding(top = 6.dp)
-                            .focusRequester(focusRequester)
-                            .clip(FieldShape)
-                            .background(MaterialTheme.colorScheme.surfaceContainer)
-                            .border(1.dp, outline, FieldShape)
-                            .padding(horizontal = 12.dp, vertical = 12.dp),
-                    decorationBox = { innerTextField ->
-                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                            if (name.text.isEmpty()) {
-                                Text(
-                                    text = stringResource(R.string.nickname_title),
-                                    style = ChatVisualTokens.MessageBodyStyle,
-                                    color = palette.textTertiary,
-                                )
-                            }
-                            Box(Modifier.padding(horizontal = 14.dp)) { innerTextField() }
-                            // The pencil makes the pre-filled name read as editable, not a label.
-                            Icon(
-                                imageVector = Icons.Filled.Edit,
-                                contentDescription = null,
-                                tint = palette.textTertiary,
-                                modifier = Modifier.align(Alignment.CenterEnd).size(12.dp),
-                            )
+                    hint = stringResource(R.string.nickname_title),
+                    autoFocus = autoFocus,
+                    onSend = {
+                        field?.let {
+                            context.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+                                ?.hideSoftInputFromWindow(it.windowToken, 0)
                         }
                     },
+                    editTextRef = { field = it },
+                    imeAction = android.view.inputmethod.EditorInfo.IME_ACTION_DONE,
+                    centered = true,
+                    maxLength = 24,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp)
+                )
+                // The pencil makes the pre-filled name read as editable, not a label.
+                Icon(
+                    imageVector = Icons.Filled.Edit,
+                    contentDescription = null,
+                    tint = palette.textTertiary,
+                    modifier = Modifier.align(Alignment.CenterEnd).size(12.dp),
                 )
             }
         }
