@@ -66,6 +66,9 @@ security-crypto = "1.1.0"
 # QR
 zxing-core = "3.5.4"
 
+# mDNS / DNS-SD (desktop LAN discovery)
+jmdns = "3.6.3"
+
 # EXIF
 exifinterface = "1.4.2"
 
@@ -163,6 +166,9 @@ androidx-security-crypto = { module = "androidx.security:security-crypto", versi
 
 # QR
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing-core" }
+
+# mDNS / DNS-SD (desktop)
+jmdns = { module = "org.jmdns:jmdns", version.ref = "jmdns" }
 
 # EXIF
 androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exifinterface" }

@@ -74,6 +74,7 @@ class DesktopPlatform(
                 paths = paths,
                 keyStore = keyStore,
                 ble = ble,
+                discovery = JmdnsLocalDiscovery(),
                 notifications = notifications,
                 tray = tray,
                 autostart = autostart,

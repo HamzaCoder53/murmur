@@ -35,7 +35,14 @@ fun main(args: Array<String>) {
     }
     val startHidden = "--autostart" in args
     val paths = AppPaths.forCurrentHost()
-    val instanceLock = acquireInstanceLock(paths.dataDir)
+    // After a restart the previous process may still hold the lock for a moment.
+    val lockWaitMs = if (DesktopRestart.RELAUNCHED_ARG in args) 15_000L else 0L
+    val lockDeadline = System.currentTimeMillis() + lockWaitMs
+    var instanceLock = acquireInstanceLock(paths.dataDir)
+    while (instanceLock == null && System.currentTimeMillis() < lockDeadline) {
+        Thread.sleep(250)
+        instanceLock = acquireInstanceLock(paths.dataDir)
+    }
     if (instanceLock == null) {
         System.err.println("Skein is already running for ${paths.dataDir.name}.")
         exitProcess(0)

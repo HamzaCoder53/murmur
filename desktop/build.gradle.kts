@@ -93,6 +93,7 @@ val sharedSourceIncludes = listOf(
     "com/bitchat/android/linked/LinkProtocol.kt",
     "com/bitchat/android/linked/LinkQr.kt",
     "com/bitchat/android/linked/LinkSession.kt",
+    "com/bitchat/android/linked/LinkSocketEngine.kt",
     "com/bitchat/android/linked/LinkStore.kt",
     "com/bitchat/android/linked/LinkedAppBridge.kt",
     "com/bitchat/android/linked/PasskeyPairing.kt",
@@ -216,6 +217,10 @@ dependencies {
     implementation(libs.google.tink)
     // Android ships org.json in the platform; the backup archive format uses it.
     implementation(libs.org.json)
+    // QR codes for linking a device (same version the phone uses).
+    implementation(libs.zxing.core)
+    // mDNS / DNS-SD: advertise and browse _skeinlink._tcp (the phone uses Android NSD).
+    implementation(libs.jmdns)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

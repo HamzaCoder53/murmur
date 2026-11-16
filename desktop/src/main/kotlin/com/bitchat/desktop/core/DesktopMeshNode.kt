@@ -5,6 +5,7 @@ import com.bitchat.android.mesh.DirectLinkAnnouncementPolicy
 import com.bitchat.android.mesh.MeshCore
 import com.bitchat.android.mesh.MeshDelegate
 import com.bitchat.android.mesh.MeshTransport
+import com.bitchat.android.model.BitchatFilePacket
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.sync.GossipSyncManager
@@ -43,6 +44,14 @@ class DesktopMeshNode(
 
     val peerID: String get() = identity.peerID
 
+    /**
+     * Receives every message this node shows (sent or received) with its private conversation
+     * (the other peer's ID; null for public). The app points it at AppStateStore, the store the
+     * UI, linked devices and backups share.
+     */
+    @Volatile
+    var messageSink: ((BitchatMessage, String?) -> Unit)? = null
+
     init {
         FavoritesPersistenceService.initialize(identity.context)
     }
@@ -76,7 +85,11 @@ class DesktopMeshNode(
     init {
         core.delegate = object : MeshDelegate {
             override fun didReceiveMessage(message: BitchatMessage) {
-                if (message.isPrivate) appendPrivate(message) else appendPublic(message)
+                if (message.isPrivate) {
+                    appendPrivate(message, message.senderPeerID ?: message.sender)
+                } else {
+                    appendPublic(message)
+                }
             }
 
             override fun didUpdatePeerList(peers: List<String>) {
@@ -105,24 +118,33 @@ class DesktopMeshNode(
 
     fun announce() = core.sendBroadcastAnnounce()
 
-    fun sendPublic(text: String) {
+    /** [messageID] keeps a linked device's ID for its message, so every copy merges by ID. */
+    fun sendPublic(
+        text: String,
+        messageID: String? = null,
+        mentions: List<String> = emptyList(),
+        channel: String? = null,
+    ) {
         if (text.isEmpty()) return
         val local = BitchatMessage(
-            id = UUID.randomUUID().toString(),
+            id = messageID ?: UUID.randomUUID().toString(),
             sender = identity.nickname,
             content = text,
             timestamp = Date(),
             isPrivate = false,
             senderPeerID = identity.peerID,
+            mentions = mentions.takeIf { it.isNotEmpty() },
+            channel = channel,
         )
         appendPublic(local)
-        core.sendMessage(text)
+        core.sendMessage(text, mentions, channel)
     }
 
-    fun sendPrivate(text: String, recipientPeerID: String, recipientNickname: String) {
+    fun sendPrivate(text: String, recipientPeerID: String, recipientNickname: String, messageID: String? = null) {
         if (text.isEmpty()) return
+        val id = messageID ?: UUID.randomUUID().toString()
         val local = BitchatMessage(
-            id = UUID.randomUUID().toString(),
+            id = id,
             sender = identity.nickname,
             content = text,
             timestamp = Date(),
@@ -130,20 +152,33 @@ class DesktopMeshNode(
             recipientNickname = recipientNickname,
             senderPeerID = identity.peerID,
         )
-        appendPrivate(local)
-        core.sendPrivateMessage(text, recipientPeerID, recipientNickname)
+        appendPrivate(local, recipientPeerID)
+        core.sendPrivateMessage(text, recipientPeerID, recipientNickname, id)
     }
+
+    fun sendReadReceipt(messageID: String, recipientPeerID: String) =
+        core.sendReadReceipt(messageID, recipientPeerID, identity.nickname)
+
+    /** Broadcasts [file] when [recipientPeerID] is null or blank, else sends it privately. */
+    fun sendFile(recipientPeerID: String?, file: BitchatFilePacket) {
+        if (recipientPeerID.isNullOrBlank()) core.sendFileBroadcast(file) else core.sendFilePrivate(recipientPeerID, file)
+    }
+
+    /** The peer's Noise static key, once it has announced. */
+    fun peerNoiseKey(peerID: String): ByteArray? = core.getPeerInfo(peerID)?.noisePublicKey
 
     private fun appendPublic(message: BitchatMessage) {
         _publicMessages.update { list ->
             if (list.any { it.id == message.id }) list else (list + message).takeLast(MAX_MESSAGES)
         }
+        messageSink?.invoke(message, null)
     }
 
-    private fun appendPrivate(message: BitchatMessage) {
+    private fun appendPrivate(message: BitchatMessage, conversation: String) {
         _privateMessages.update { list ->
             if (list.any { it.id == message.id }) list else (list + message).takeLast(MAX_MESSAGES)
         }
+        messageSink?.invoke(message, conversation)
     }
 
     fun initiateHandshake(peerID: String) = core.initiateNoiseHandshake(peerID)
