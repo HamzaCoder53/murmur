@@ -4,15 +4,43 @@ Skein is a modified fork of [bitchat-android](https://github.com/permissionlesst
 changed in November 2026 and distributed under the same GPL-3.0 license (see `LICENSE.md`).
 It keeps Bitchat's wire protocol, so Skein phones and watches talk to stock Bitchat clients.
 
+## Download
+
+- **Google Play** (phone and Wear OS watch, automatic updates): currently in testing.
+- **GitHub:** every release on the [Releases page](https://github.com/HamzaCoder53/skein/releases)
+  has ready-to-install files:
+  - `skein-phone-<version>-arm64.apk`: most phones. `-universal.apk` works on every phone.
+  - `skein-watch-<version>.apk`: the Wear OS watch app.
+  - `SHA256SUMS.txt` to check the downloads.
+
+**Install on a phone:** download the APK on the phone, open it, and allow "Install unknown apps"
+for your browser or file manager when asked. To get updates automatically, add this repository
+to [Obtainium](https://github.com/ImranR98/Obtainium).
+
+**Install on a watch:** watches can't open downloaded files, so install from a computer with
+[adb](https://developer.android.com/tools/adb). On the watch turn on Developer options →
+Wireless debugging, pair, then run `adb install skein-watch-<version>.apk`.
+
+**Don't mix Google Play and GitHub copies.** They are signed differently: Android won't update one
+with the other (uninstall first, after exporting a backup from Settings), and a phone app only
+talks to a watch app from the same source.
+
 What this fork changes:
 
 - **Name and application ID** (`xfuturehb.murmur`) for both the phone and Wear OS apps, so it
   installs alongside the official app. Kotlin packages remain `com.bitchat.*`.
-- **Phone-watch tunnel.** A watch paired to a phone running Skein switches its own Bluetooth mesh
-  radio off and sends its packets through the phone over the Wearable Data Layer. The watch keeps
-  its own identity and keys.
-- **Standalone rendezvous.** Away from its phone, the watch advertises continuously at low power
-  and scans in a ten-second window around each minute boundary, instead of on an unaligned timer.
+- **Phone-watch tunnel and linked identity.** A watch next to a phone running Skein switches its
+  own Bluetooth mesh off and goes through the phone; it can also share the phone's identity, inbox
+  and read status.
+- **Standalone watch.** Away from the phone, the watch advertises at low power and scans in a
+  five-second window around each minute, and can send and receive private messages and location
+  chat over the internet (Nostr).
+- **More ways to connect:** a local Wi-Fi mesh between phones (works without internet), a
+  broadcast power setting with automatic boosts for distant peers.
+- **Your data:** encrypted backup export/import, Android backup, moving to a new phone by QR code,
+  linked phones and tablets, optional internet sync, and a switch to keep or erase message history.
+- **Watch app** in English and Arabic, with a tile, a complication, notification styles and a
+  built-in guide.
 - Offline APK sharing is disabled, because it distributes the upstream APK.
 
 Skein is not affiliated with or endorsed by the Bitchat project. The upstream README follows.
