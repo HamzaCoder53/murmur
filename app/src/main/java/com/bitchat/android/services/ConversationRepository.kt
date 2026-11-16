@@ -129,6 +129,16 @@ class ConversationRepository internal constructor(
         }
     }
 
+    /** Every saved private message (backup export). Null if the database cannot be read. */
+    internal suspend fun loadAllAndWait(): PersistedConversationSnapshot? = withContext(dispatcher) {
+        try {
+            database.loadSnapshot()
+        } catch (error: Exception) {
+            Log.e(TAG, "Unable to load private conversations", error)
+            null
+        }
+    }
+
     fun upsertMessage(
         conversationID: String,
         aliases: Set<String>,

@@ -312,6 +312,7 @@ fun AboutSheet(
     isPresented: Boolean,
     onDismiss: () -> Unit,
     onShowDebug: (() -> Unit)? = null,
+    onWipeThisPhone: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1354,6 +1355,10 @@ fun AboutSheet(
                                 }
                             }
                         }
+                    }
+
+                    item(key = "backup_transfer") {
+                        com.bitchat.android.backup.BackupSettingsSection(onWipeThisPhone = onWipeThisPhone)
                     }
 
                     } // end Settings tab
