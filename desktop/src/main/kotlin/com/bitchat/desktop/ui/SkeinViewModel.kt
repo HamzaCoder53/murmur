@@ -136,8 +136,10 @@ class SkeinViewModel(
         buildState(peers, live, favorites, verified, channels, l)
     }.stateIn(scope, SharingStarted.Eagerly, SkeinUiState())
 
-    /** IDs already written to [HistoryPort]. */
-    private val savedIds = mutableSetOf<String>().apply { addAll(local.value.history.map { it.id }) }
+    /** What was last written to [HistoryPort], by message ID (re-saved when delivery changes). */
+    private val savedIds = mutableMapOf<String, DeliveryState?>().apply {
+        local.value.history.forEach { put(it.id, it.delivery) }
+    }
 
     init {
         scope.launch {
@@ -256,7 +258,7 @@ class SkeinViewModel(
     fun setSaveHistory(enabled: Boolean) {
         if (!enabled) {
             ports.history.clear()
-            savedIds.clear()
+            synchronized(savedIds) { savedIds.clear() }
             local.update { it.copy(history = emptyList()) }
         } else {
             // What is already on screen is saved too.
@@ -266,7 +268,12 @@ class SkeinViewModel(
     }
 
     private fun saveNew(messages: List<ChatMessage>) {
-        messages.filter { savedIds.add(it.id) }.forEach { ports.history.append(it) }
+        val changed = synchronized(savedIds) {
+            messages.filter { m ->
+                (m.id !in savedIds || savedIds[m.id] != m.delivery).also { if (it) savedIds[m.id] = m.delivery }
+            }
+        }
+        changed.forEach { ports.history.append(it) }
     }
 
     private fun updateSettings(change: (DesktopUiSettings) -> DesktopUiSettings) {

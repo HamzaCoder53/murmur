@@ -1,6 +1,9 @@
 package com.bitchat.desktop.core
 
+import com.bitchat.android.favorites.FavoritesPersistenceService
 import com.bitchat.android.model.BitchatMessage
+import com.bitchat.android.model.DeliveryStatus
+import com.bitchat.android.services.ContactIdentityResolver
 import com.bitchat.desktop.TestDevices
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -98,6 +101,55 @@ class LoopbackMeshTest {
         val received = awaitMessage(bob.privateMessages) { it.content == "synthetic secret" }
         assertTrue(received.isPrivate)
         assertEquals(alice.peerID, received.senderPeerID)
+        assertTrue(bob.privateChats.value[alice.peerID].orEmpty().any { it.id == received.id })
+        assertTrue(alice.privateChats.value[bob.peerID].orEmpty().any { it.id == received.id })
+    }
+
+    @Test
+    fun `a delivery ack from the recipient marks the sent message delivered`() = runBlocking {
+        establishSession()
+        alice.sendPrivate("synthetic ack me", bob.peerID, "bob", messageID = "synthetic-msg-1")
+        assertEquals(DeliveryStatus.Sent, alice.privateMessages.value.single { it.id == "synthetic-msg-1" }.deliveryStatus)
+
+        val delivered = awaitMessage(alice.privateMessages) {
+            it.id == "synthetic-msg-1" && it.deliveryStatus is DeliveryStatus.Delivered
+        }
+        assertEquals("bob", (delivered.deliveryStatus as DeliveryStatus.Delivered).to)
+        val inChat = alice.privateChats.value[bob.peerID]!!.single { it.id == "synthetic-msg-1" }
+        assertTrue(inChat.deliveryStatus is DeliveryStatus.Delivered)
+    }
+
+    @Test
+    fun `renaming announces the new nickname right away`() = runBlocking {
+        awaitPeer(bob, alice.peerID)
+        assertEquals("alice", bob.peerNickname(alice.peerID))
+        alice.rename("alice2")
+        assertEquals("alice2", alice.identity.nickname)
+        withTimeout(TIMEOUT_MS) {
+            while (bob.peerNickname(alice.peerID) != "alice2") kotlinx.coroutines.delay(10)
+        }
+    }
+
+    @Test
+    fun `isFavoritePeer reads the shared favorites service`() {
+        val noiseKey = ByteArray(32) { (it + 101).toByte() }
+        val peerID = ContactIdentityResolver.peerIdForNoiseKey(noiseKey)
+        assertFalse(alice.isFavoritePeer(peerID))
+        FavoritesPersistenceService.shared.updateFavoriteStatus(noiseKey, "synthetic-fav", true)
+        assertTrue(alice.isFavoritePeer(peerID))
+        FavoritesPersistenceService.shared.updateFavoriteStatus(noiseKey, "synthetic-fav", false)
+        assertFalse(alice.isFavoritePeer(peerID))
+    }
+
+    private suspend fun establishSession() {
+        awaitPeer(alice, bob.peerID)
+        awaitPeer(bob, alice.peerID)
+        alice.initiateHandshake(bob.peerID)
+        withTimeout(TIMEOUT_MS) {
+            while (!(alice.hasEstablishedSession(bob.peerID) && bob.hasEstablishedSession(alice.peerID))) {
+                kotlinx.coroutines.delay(10)
+            }
+        }
     }
 
     private suspend fun awaitPeer(node: DesktopMeshNode, peerID: String) {

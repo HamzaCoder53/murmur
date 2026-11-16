@@ -32,6 +32,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import com.bitchat.desktop.storage.DesktopContactsStore
+import com.bitchat.desktop.storage.EncryptedHistoryStore
 
 /**
  * Hook for other desktop builders: replace in-memory ports with real ones (DesktopStore history
@@ -68,13 +72,28 @@ fun runDesktopApp(
         loopbackTransport = lt
         n
     }
+    val settingsPort = PrefsSettingsPort(ctx)
+    val initialSettings = settingsPort.load()
+    applyDockPreference(initialSettings)
+
+    // Encrypted on-disk history and contacts, keyed from the OS key store (Keychain / DPAPI).
+    val keyFor: (String) -> ByteArray = platform.keyStore::getOrCreateKey
+    val historyStore = EncryptedHistoryStore.open(platform.paths.dataDir, keyFor)
+    val contactsStore = DesktopContactsStore.open(ctx, platform.paths.dataDir, keyFor, node::peerNoiseKey)
+    if (initialSettings.saveHistory) {
+        // The node is the one live store for the window and linked devices; seed it from disk.
+        historyStore.load().forEach { m -> toBitchatMessage(m)?.let { (conv, msg) -> node.restore(conv, msg) } }
+    }
+    node.peers.onEach { ids ->
+        ids.forEach { contactsStore.promotePending(it, node.peerNickname(it) ?: it.take(8)) }
+    }.launchIn(appScope)
     node.start()
 
-    val settingsPort = PrefsSettingsPort(ctx)
-    applyDockPreference(settingsPort.load())
     val ports = customizePorts(
         SkeinPorts(
             messaging = MeshMessagingAdapter(node, appScope),
+            contacts = contactsStore,
+            history = historyStore,
             locations = InMemoryLocationChannelsPort(myNickname = { identity.nickname }),
             settings = settingsPort,
             platform = DesktopPlatformToggles(platform),
@@ -90,6 +109,8 @@ fun runDesktopApp(
         val shutdown = {
             platform.tray.hide()
             node.stop()
+            runCatching { historyStore.close() }
+            contactsStore.close()
             bleTransport?.stop()
             loopbackTransport?.close()
             appScope.cancel()

@@ -8,7 +8,6 @@ import com.bitchat.desktop.core.DesktopMeshNode
 import com.bitchat.desktop.platform.DesktopPlatform
 import com.bitchat.desktop.platform.HostOs
 import java.util.Date
-import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,9 +18,9 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 
 /**
- * [MessagingPort] over the real [DesktopMeshNode]. The node does not report the recipient of a
- * private message it sends, so outgoing private messages are tracked here and the node's own
- * local echoes are dropped.
+ * [MessagingPort] over the real [DesktopMeshNode]. The node keeps private messages per
+ * conversation (incoming and outgoing, with delivery status), so the window shows exactly what
+ * linked devices see through [com.bitchat.desktop.link.DesktopLinkedAppBridge].
  */
 class MeshMessagingAdapter(
     private val node: DesktopMeshNode,
@@ -31,7 +30,6 @@ class MeshMessagingAdapter(
     override val myPeerID: String get() = node.peerID
     override val myFingerprint: String get() = node.identity.fingerprint
 
-    private val outgoingPrivate = MutableStateFlow<List<ChatMessage>>(emptyList())
     private val handshaking = MutableStateFlow<Set<String>>(emptySet())
 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
@@ -41,11 +39,9 @@ class MeshMessagingAdapter(
     override val peers: StateFlow<List<PeerSummary>> = _peers.asStateFlow()
 
     init {
-        combine(node.publicMessages, node.privateMessages, outgoingPrivate) { pub, priv, out ->
+        combine(node.publicMessages, node.privateChats) { pub, chats ->
             pub.map { toChatMessage(it, myPeerID, ConversationId.Mesh) } +
-                priv.filter { it.senderPeerID != myPeerID }.mapNotNull { m ->
-                    m.senderPeerID?.let { toChatMessage(m, myPeerID, ConversationId.Private(it)) }
-                } + out
+                chats.flatMap { (peerID, list) -> list.map { toChatMessage(it, myPeerID, ConversationId.Private(peerID)) } }
         }.onEach { _messages.value = it }.launchIn(scope)
 
         // Session state has no flow of its own; re-read it whenever peers or messages change.
@@ -66,18 +62,6 @@ class MeshMessagingAdapter(
     override fun sendPrivate(peerID: String, text: String) {
         val nick = node.peerNickname(peerID) ?: peerID.take(8)
         node.sendPrivate(text, peerID, nick)
-        outgoingPrivate.update {
-            it + ChatMessage(
-                id = UUID.randomUUID().toString(),
-                conversation = ConversationId.Private(peerID),
-                senderPeerID = myPeerID,
-                senderNickname = node.identity.nickname,
-                text = text,
-                timestamp = Date(),
-                isMine = true,
-                delivery = DeliveryState.SENT,
-            )
-        }
     }
 
     override fun startSession(peerID: String) {
@@ -87,7 +71,7 @@ class MeshMessagingAdapter(
     }
 
     override fun peerFingerprint(peerID: String): String? = fingerprintLookup(peerID)
-    override fun setNickname(nickname: String) { node.identity.nickname = nickname }
+    override fun setNickname(nickname: String) = node.rename(nickname)
     override fun nickname(): String = node.identity.nickname
 }
 
@@ -102,6 +86,36 @@ internal fun toChatMessage(m: BitchatMessage, myPeerID: String, conversation: Co
         isMine = m.senderPeerID == myPeerID,
         delivery = m.deliveryStatus?.let(::toDeliveryState),
     )
+
+/**
+ * Saved mesh/private history back to the node's model, for seeding [DesktopMeshNode.restore].
+ * Returns (conversation peer ID or null for #mesh, message); location messages are not mesh state.
+ */
+internal fun toBitchatMessage(m: ChatMessage): Pair<String?, BitchatMessage>? {
+    val conv: String? = when (val c = m.conversation) {
+        ConversationId.Mesh -> null
+        is ConversationId.Private -> c.peerID
+        is ConversationId.Location -> return null
+    }
+    val msg = BitchatMessage(
+        id = m.id,
+        sender = m.senderNickname,
+        content = m.text,
+        timestamp = m.timestamp,
+        isPrivate = conv != null,
+        senderPeerID = m.senderPeerID,
+        deliveryStatus = m.delivery?.let(::fromDeliveryState),
+    )
+    return conv to msg
+}
+
+internal fun fromDeliveryState(s: DeliveryState): DeliveryStatus = when (s) {
+    DeliveryState.SENDING -> DeliveryStatus.Sending
+    DeliveryState.SENT -> DeliveryStatus.Sent
+    DeliveryState.DELIVERED -> DeliveryStatus.Delivered("", Date(0))
+    DeliveryState.READ -> DeliveryStatus.Read("", Date(0))
+    DeliveryState.FAILED -> DeliveryStatus.Failed("")
+}
 
 internal fun toDeliveryState(s: DeliveryStatus): DeliveryState = when (s) {
     is DeliveryStatus.Sending -> DeliveryState.SENDING

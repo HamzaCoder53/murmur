@@ -8,6 +8,7 @@ import com.bitchat.android.linked.LinkPeer
 import com.bitchat.android.linked.LinkedAppBridge
 import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.services.AppStateStore
+import com.bitchat.android.services.ContactIdentityResolver
 import com.bitchat.android.wearlink.IdentityBundle
 import com.bitchat.desktop.core.DesktopIdentity
 import com.bitchat.desktop.core.DesktopMeshNode
@@ -37,22 +38,23 @@ class DesktopLinkedAppBridge(
 
     override fun nickname(): String = identity.nickname
 
+    /** Same rename path as the window: persist, update the shared store and announce at once. */
     override fun setNickname(name: String) {
-        identity.nickname = name
-        AppStateStore.setNickname(name)
+        node.rename(name)
         notifyChanged()
     }
 
     override suspend fun entriesSince(since: Long): List<LinkEntry> =
         currentEntries().filter { it.message.timestamp.time >= since }
 
+    /** Reads the node, the same store the window shows, so both see one history. */
     override fun currentEntries(): List<LinkEntry> {
         val out = ArrayList<LinkEntry>()
-        for (m in AppStateStore.publicMessages.value) {
+        for (m in node.publicMessages.value) {
             out += LinkEntry(message = m, conversation = null, read = true)
         }
-        val readIds = AppStateStore.readPrivateMessageIDs.value
-        for ((peerId, list) in AppStateStore.privateMessages.value) {
+        val readIds = node.readPrivateIDs.value
+        for ((peerId, list) in node.privateChats.value) {
             for (m in list) {
                 out += LinkEntry(message = m, conversation = peerId, read = m.id in readIds)
             }
@@ -63,12 +65,8 @@ class DesktopLinkedAppBridge(
     override suspend fun applyEntries(entries: List<LinkEntry>): List<String> {
         val missingMedia = ArrayList<String>()
         for (entry in entries) {
-            val conv = entry.conversation
-            if (conv == null) {
-                AppStateStore.addPublicMessage(entry.message)
-            } else {
-                AppStateStore.addPrivateMessage(conv, entry.message, forceRead = entry.read)
-            }
+            node.restore(entry.conversation, entry.message, read = entry.read)
+            if (entry.conversation != null && entry.read) node.markPrivateRead(listOf(entry.message.id))
             if (entry.message.type != BitchatMessageType.Message && mediaFile(entry.message.id) == null) {
                 missingMedia += entry.message.id
             }
@@ -86,8 +84,25 @@ class DesktopLinkedAppBridge(
             )
         }
 
+    /**
+     * Writes favorites synced from a linked device into the shared [FavoritesPersistenceService]
+     * (persisted, encrypted). Entries without a valid 32-byte Noise key are ignored, and an entry
+     * older than what is stored does not overwrite it.
+     */
     override fun applyFavorites(favorites: List<LinkFavorite>) {
-        // Synced into FavoritesPersistenceService when full peer-state persistence lands.
+        if (favorites.isEmpty()) return
+        val service = FavoritesPersistenceService.shared
+        for (fav in favorites) {
+            val hex = fav.noiseKeyHex.trim().lowercase()
+            if (!ContactIdentityResolver.isNoiseKeyHex(hex)) continue
+            val key = ContactIdentityResolver.bytesFromHex(hex)?.takeIf { it.size == 32 } ?: continue
+            val existing = service.getFavoriteStatus(key)
+            if (existing != null && existing.lastUpdated.time > fav.updatedAt) continue
+            if (existing != null && existing.isFavorite == fav.isFavorite && existing.peerNickname == fav.nickname) continue
+            val nickname = fav.nickname.trim().take(MAX_NICKNAME_CHARS).ifEmpty { existing?.peerNickname ?: "" }
+            service.updateFavoriteStatus(key, nickname, fav.isFavorite)
+        }
+        notifyChanged()
     }
 
     override fun peers(): List<LinkPeer> =
@@ -115,7 +130,8 @@ class DesktopLinkedAppBridge(
     override suspend fun execute(command: LinkCommand, media: ByteArray?) {
         when (command) {
             is LinkCommand.SendPublic -> node.sendPublic(command.content)
-            is LinkCommand.SendPrivate -> node.sendPrivate(command.content, command.peerID, command.recipientNickname)
+            is LinkCommand.SendPrivate ->
+                node.sendPrivate(command.content, command.peerID, command.recipientNickname, command.messageID)
             else -> Unit
         }
     }
@@ -164,5 +180,9 @@ class DesktopLinkedAppBridge(
         InetAddress.getLocalHost().hostName
     } catch (_: Exception) {
         "Skein Desktop"
+    }
+
+    private companion object {
+        const val MAX_NICKNAME_CHARS = 32
     }
 }

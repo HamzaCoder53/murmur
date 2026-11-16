@@ -60,31 +60,31 @@ class MacKeychainKeyStore(
 /**
  * Windows DPAPI-backed [SecureKeyStore]. Encrypts each 256-bit key with CurrentUser DPAPI
  * (`ProtectedData.Protect`) and stores the opaque ciphertext blob under `%LOCALAPPDATA%\Skein\secrets`.
+ *
+ * The PowerShell script on the command line is a constant with no secret in it: the key (or the
+ * blob to unprotect) goes to the child's stdin, so it never shows up in the process command line
+ * or in process-creation / script-block logs. stderr is kept apart from stdout so PowerShell
+ * warnings cannot corrupt the base64 result.
  */
-class WindowsDpapiKeyStore(private val dir: File) : SecureKeyStore {
+class WindowsDpapiKeyStore(
+    private val dir: File,
+    private val runner: (command: List<String>, input: ByteArray) -> ByteArray = ::runStdinHelper,
+) : SecureKeyStore {
     private val lock = Any()
 
     override fun getOrCreateKey(alias: String): ByteArray = synchronized(lock) {
         val file = fileFor(alias)
         if (file.exists()) {
-            val blobB64 = Base64.getEncoder().encodeToString(file.readBytes())
-            val plainB64 = runPowerShell(
-                "\$b=[Convert]::FromBase64String('$blobB64');" +
-                    "\$p=[System.Security.Cryptography.ProtectedData]::Unprotect(\$b,\$null,[System.Security.Cryptography.DataProtectionScope]::CurrentUser);" +
-                    "[Convert]::ToBase64String(\$p)",
-            ).trim()
-            val decoded = Base64.getDecoder().decode(plainB64)
-            check(decoded.size == 32) { "Malformed DPAPI key for alias '$alias'" }
-            return decoded
+            val plain = runner(powerShellCommand(UNPROTECT_SCRIPT), file.readBytes())
+            if (plain.size != 32) {
+                plain.fill(0)
+                error("Malformed DPAPI key for alias '$alias'")
+            }
+            return plain
         }
         val key = ByteArray(32).also(SecureRandom()::nextBytes)
-        val keyB64 = Base64.getEncoder().encodeToString(key)
-        val blobB64 = runPowerShell(
-            "\$p=[Convert]::FromBase64String('$keyB64');" +
-                "\$b=[System.Security.Cryptography.ProtectedData]::Protect(\$p,\$null,[System.Security.Cryptography.DataProtectionScope]::CurrentUser);" +
-                "[Convert]::ToBase64String(\$b)",
-        ).trim()
-        val blob = Base64.getDecoder().decode(blobB64)
+        val blob = runner(powerShellCommand(PROTECT_SCRIPT), key)
+        check(blob.isNotEmpty()) { "Windows DPAPI returned an empty blob" }
         OwnerOnlyFiles.ensureDir(dir)
         OwnerOnlyFiles.writeAtomically(file, blob)
         key
@@ -97,15 +97,50 @@ class WindowsDpapiKeyStore(private val dir: File) : SecureKeyStore {
         return File(dir, "$safe.dpapi")
     }
 
-    private fun runPowerShell(script: String): String {
-        val full = "Add-Type -AssemblyName System.Security; $script"
-        val encoded = Base64.getEncoder().encodeToString(full.toByteArray(Charsets.UTF_16LE))
-        val proc = ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded)
-            .redirectErrorStream(true)
-            .start()
-        val out = proc.inputStream.bufferedReader().readText()
-        val code = proc.waitFor()
-        check(code == 0) { "Windows DPAPI helper failed (exit $code)" }
-        return out
+    companion object {
+        /** Constant scripts: no key material is ever interpolated into them. */
+        const val PROTECT_SCRIPT =
+            "\$p=[Convert]::FromBase64String([Console]::In.ReadLine());" +
+                "\$b=[System.Security.Cryptography.ProtectedData]::Protect(\$p,\$null,[System.Security.Cryptography.DataProtectionScope]::CurrentUser);" +
+                "[Array]::Clear(\$p,0,\$p.Length);" +
+                "[Console]::Out.WriteLine([Convert]::ToBase64String(\$b))"
+        const val UNPROTECT_SCRIPT =
+            "\$b=[Convert]::FromBase64String([Console]::In.ReadLine());" +
+                "\$p=[System.Security.Cryptography.ProtectedData]::Unprotect(\$b,\$null,[System.Security.Cryptography.DataProtectionScope]::CurrentUser);" +
+                "[Console]::Out.WriteLine([Convert]::ToBase64String(\$p));" +
+                "[Array]::Clear(\$p,0,\$p.Length)"
+
+        fun powerShellCommand(script: String): List<String> {
+            val full = "Add-Type -AssemblyName System.Security; $script"
+            val encoded = Base64.getEncoder().encodeToString(full.toByteArray(Charsets.UTF_16LE))
+            return listOf("powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded)
+        }
+
+        /**
+         * Starts [command], writes [input] as one base64 line to its stdin and decodes the last
+         * non-blank stdout line as base64. The base64 copy of [input] is zeroed after writing;
+         * stderr is discarded instead of being merged into stdout.
+         */
+        fun runStdinHelper(command: List<String>, input: ByteArray): ByteArray {
+            val proc = ProcessBuilder(command)
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start()
+            val inputB64 = Base64.getEncoder().encode(input)
+            try {
+                proc.outputStream.use { out ->
+                    out.write(inputB64)
+                    out.write('\n'.code)
+                    out.flush()
+                }
+            } finally {
+                inputB64.fill(0)
+            }
+            val out = proc.inputStream.bufferedReader().readText()
+            val code = proc.waitFor()
+            check(code == 0) { "Windows DPAPI helper failed (exit $code)" }
+            val line = out.lineSequence().map { it.trim() }.lastOrNull { it.isNotEmpty() }
+                ?: error("Windows DPAPI helper printed no result")
+            return Base64.getDecoder().decode(line)
+        }
     }
 }

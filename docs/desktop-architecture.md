@@ -1,10 +1,12 @@
 # Skein desktop (Windows and macOS): architecture
 
-Status: **foundation stage.** The shared protocol, Noise, mesh, Nostr-crypto, linked-device and
-backup cores compile and run on the desktop JVM. A minimal Compose window and a headless smoke
-mode exist. There is no real radio yet: nodes talk over an in-process loopback transport. Later
-stages add the Bluetooth helpers, UI parity, tray/menu bar, autostart, crash reporting and
-packaging.
+Status: **features stage, in progress** (foundation done). The shared protocol, Noise, mesh,
+Nostr-crypto, linked-device and backup cores compile and run on the desktop JVM, with the
+messenger window, OS key stores (macOS Keychain, Windows DPAPI) and encrypted on-disk history,
+contacts and settings (see "Persistence" below). `docs/desktop-build-plan.md` (Status) lists what
+is real and what is still a placeholder. Still outstanding for persistence: the phone's
+SQLite conversation repository is not shared (the desktop keeps its own sealed history file),
+read state is not saved per message, and the desktop does not send read receipts.
 
 ## Module layout
 
@@ -70,7 +72,7 @@ an MCP SDK, etc.). Those are developer-tooling configurations only; none of it i
 | Excluded | Reason | Plan |
 |---|---|---|
 | `mesh/Bluetooth*`, `PowerManager`, `RadioPower`, `BluetoothMeshService`, `UnifiedMeshService` | Android BLE stack (GATT, advertiser, scanner), battery/lifecycle receivers | Replaced by `BleTransport` helper processes (stage 2) feeding `DesktopMeshNode.receive` |
-| `services/AppStateStore`, `ConversationRepository`, `ConversationStorageCipher`, `MessageHistory` | Conversation persistence is `android.database.sqlite` + Android Keystore; shimming SQLite is a large framework | Desktop variants (same FQN) keep the API the core calls, in memory only. UI-parity stage: either JDBC SQLite (`xerial sqlite-jdbc`) behind a small `SQLiteDatabase`/`Cursor` shim plus a Keychain/DPAPI-keyed cipher, or extract a repository interface in app/ |
+| `services/AppStateStore`, `ConversationRepository`, `ConversationStorageCipher`, `MessageHistory` | Conversation persistence is `android.database.sqlite` + Android Keystore; shimming SQLite is a large framework | Desktop variants (same FQN) keep the API the core calls, in memory. Desktop history is persisted separately by `storage.EncryptedHistoryStore` (see "Persistence"). Sharing the phone's repository (JDBC SQLite shim, or a repository interface extracted in app/) is still open |
 | `nostr/NostrRelayManager`, `NostrClient`, `NostrTransport`, `RelayDirectory`, geohash/notes managers, background runtime | Relay client is wired to `mesh.PowerManager`, the Tor `net.OkHttpProvider`, `RelayDirectory` (Application + assets) and `LiveLocationPrivacyGate`; managers need `Application` | Needs small seams in app/ (inject an OkHttp provider and a power-profile flow) before mirroring; then plain OkHttp websockets on desktop |
 | `linked/LinkTransport`, `AndroidLinkedAppBridge`, `LinkController` | `NsdManager` discovery and Android process/intent glue | Desktop `LinkTransport` over `LocalDiscovery` (mDNS via JmDNS or the native helpers) reusing `LinkCoordinator`/`LinkSession` |
 | `backup/TransferCode`, `TransferNetwork`, `DeviceBackup`, `AndroidBackup`, `SkeinBackupAgent`, `BackupController`, dialogs | NSD, `ConnectivityManager`, Android Backup Service, SAF `Uri`, Compose-Android UI | Desktop file dialogs + `LocalDiscovery` |
@@ -84,8 +86,10 @@ an MCP SDK, etc.). Those are developer-tooling configurations only; none of it i
 Same pattern as the watch's `BluetoothPermissionManager`/`MeshServiceHolder`: a small class with
 the exact package and the members the mirrored code calls.
 
-- `services.AppStateStore`: in-memory peers, direct peers, public/private messages, read state.
-- `services.MessageHistory`: same preference file/key as the phone; nothing to attach or erase yet.
+- `services.AppStateStore`: in-memory peers, direct peers, public/private messages, read state
+  (what the mirrored core writes). The window and linked devices use `DesktopMeshNode` instead.
+- `services.MessageHistory`: same preference file/key as the phone. The desktop window's own
+  "Save message history" switch is `DesktopUiSettings.saveHistory` (see "Persistence").
 - `features.file.FileUtils`: `saveIncomingFile`, `messageTypeForMime` (same paths/naming rules).
 - `features.voice.LiveVoiceManager` / `LiveVoiceScope`: decode-validate and drop live frames.
 - `service.MeshServiceHolder`, `wifiaware.WifiAwareController`: debug-toggle targets, as on wear.
@@ -123,7 +127,7 @@ directory and key store.
 | Interface | Now | Target |
 |---|---|---|
 | `AppPaths` | macOS `~/Library/Application Support/Skein`, Windows `%APPDATA%\Skein`, else XDG; `-Dskein.dataDir` override | secrets under `%LOCALAPPDATA%` on Windows |
-| `SecureKeyStore` | `FileKeyStore` (**placeholder**: random key in an owner-only file, so obfuscation only), `InMemoryKeyStore` (tests, smoke) | macOS Keychain, Windows DPAPI, via the helpers or JNA |
+| `SecureKeyStore` | `MacKeychainKeyStore` (`security -i`, key on stdin), `WindowsDpapiKeyStore` (CurrentUser DPAPI through PowerShell; key and blob on stdin, constant script on the command line), `InMemoryKeyStore` (other OSes, tests, smoke), `FileKeyStore` (dev only, `-Dskein.allowInsecureKeyStore=true`) | DPAPI in-process via JNA instead of PowerShell; Windows store never run on Windows yet |
 | `BleTransport` (central + peripheral) | `NoopBleTransport` | Swift helper (macOS), .NET WinRT helper (Windows) |
 | `LocalDiscovery` (mDNS) | no-op | JmDNS or the native helpers; used by the LAN mesh and linked devices |
 | `Notifier` | no-op | `java.awt.SystemTray` / native notifications |
@@ -135,6 +139,25 @@ The mesh host is `core.DesktopMeshNode`: the shared `MeshCore` over any `MeshTra
 like the phone's `LanMeshService`. Transports call `DesktopMeshNode.receive(packet, senderPeerID,
 linkAddress)`. `core.LoopbackTransport` is the reference transport: every packet crosses as
 `BinaryProtocol` bytes, with one ordered receive thread per endpoint.
+
+## Persistence (`com.bitchat.desktop.storage`)
+
+All files live in the app data directory, owner-only, written atomically.
+
+| What | Where | Protection |
+|---|---|---|
+| Message history (#mesh, DMs, location chats, delivery state) | `storage.EncryptedHistoryStore` → `history.sealed` | `SealedFile`: AES-256-GCM, random nonce, purpose as AAD; key `skein_history` from `SecureKeyStore`; unreadable file = empty (fail closed) |
+| Verified fingerprints, favorites set before a peer's Noise key is known | `storage.DesktopContactsStore` → `contacts.sealed` | same, key `skein_contacts` |
+| Favorites (by Noise key) | shared `FavoritesPersistenceService` | encrypted preference shim |
+| UI settings (language, broadcast power, show in Dock, save history) | `ui.PrefsSettingsPort` → preference shim | owner-only JSON |
+
+History is written on a background thread, coalescing bursts; an `append` with a known ID
+replaces the saved copy, so later delivery/read updates persist. Turning "Save message history"
+off deletes the file at once and a pending write cannot recreate it. At startup the saved
+history seeds `DesktopMeshNode`, which is the single in-process store read by both the window
+(`MeshMessagingAdapter`) and linked devices (`DesktopLinkedAppBridge`). Delivery acks and read
+receipts update the node's message status; favorites synced from a linked device are written
+into `FavoritesPersistenceService`.
 
 ## Verification
 
