@@ -37,23 +37,37 @@ import com.bitchat.desktop.platform.DesktopPlatform
  * Minimal first window: identity plus a public timeline over the loopback transport (until the
  * BLE helpers land, messages only reach other nodes in this process). UI parity is a later stage.
  */
-fun runDesktopApp(platform: DesktopPlatform) {
+fun runDesktopApp(platform: DesktopPlatform, startHidden: Boolean = false) {
     val identity = DesktopIdentity.loadOrCreate(Context(platform.paths.dataDir))
     val (node, transport) = DesktopMeshNode.overLoopback(identity, LoopbackHub())
     node.start()
     application {
-        Window(
-            onCloseRequest = {
-                node.stop()
-                transport.close()
-                exitApplication()
-            },
-            title = "Skein",
-            state = rememberWindowState(width = 520.dp, height = 640.dp),
-        ) {
-            MaterialTheme {
-                Surface(Modifier.fillMaxSize()) {
-                    SkeinHome(identity, node)
+        var windowVisible by remember { mutableStateOf(!startHidden) }
+        val shutdown = {
+            platform.tray.hide()
+            node.stop()
+            transport.close()
+            exitApplication()
+        }
+        androidx.compose.runtime.LaunchedEffect(platform.tray) {
+            platform.tray.show(
+                tooltip = "Skein",
+                onOpen = { windowVisible = true },
+                onQuit = shutdown,
+            )
+        }
+        if (windowVisible) {
+            Window(
+                onCloseRequest = {
+                    if (platform.tray.isSupported) windowVisible = false else shutdown()
+                },
+                title = "Skein",
+                state = rememberWindowState(width = 520.dp, height = 640.dp),
+            ) {
+                MaterialTheme {
+                    Surface(Modifier.fillMaxSize()) {
+                        SkeinHome(identity, node)
+                    }
                 }
             }
         }

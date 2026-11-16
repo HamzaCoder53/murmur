@@ -38,25 +38,47 @@ class DesktopPlatform(
         fun forCurrentHost(dataDirOverride: File? = null): DesktopPlatform {
             val paths = AppPaths.forCurrentHost(dataDirOverride)
             val allowInsecure = System.getProperty(ALLOW_INSECURE_KEYSTORE_PROP)?.toBoolean() == true
-            val keyStore = if (allowInsecure) {
-                android.util.Log.w(
-                    "DesktopPlatform",
-                    "Using insecure FileKeyStore under ${paths.secretsDir.name} (dev opt-in via -D$ALLOW_INSECURE_KEYSTORE_PROP=true)",
-                )
-                FileKeyStore(paths.secretsDir)
-            } else {
-                android.util.Log.w(
-                    "DesktopPlatform",
-                    "OS Keychain/DPAPI not yet wired; using InMemoryKeyStore (keys are not persisted across restarts)",
-                )
-                InMemoryKeyStore()
+            val os = HostOs.current()
+            val keyStore: SecureKeyStore = when {
+                allowInsecure -> {
+                    android.util.Log.w(
+                        "DesktopPlatform",
+                        "Using insecure FileKeyStore under ${paths.secretsDir.name} (dev opt-in via -D$ALLOW_INSECURE_KEYSTORE_PROP=true)",
+                    )
+                    FileKeyStore(paths.secretsDir)
+                }
+                os == HostOs.MAC -> MacKeychainKeyStore()
+                os == HostOs.WINDOWS -> WindowsDpapiKeyStore(paths.secretsDir)
+                else -> {
+                    android.util.Log.w(
+                        "DesktopPlatform",
+                        "No OS credential store on $os; using InMemoryKeyStore",
+                    )
+                    InMemoryKeyStore()
+                }
             }
+            val ble = when (os) {
+                HostOs.MAC -> com.bitchat.desktop.ble.MacBleHelper.createTransport()
+                HostOs.WINDOWS -> com.bitchat.desktop.ble.WindowsBleHelper.createTransport()
+                HostOs.OTHER -> NoopBleTransport
+            }
+            val tray = AwtTrayController()
+            val notifications = OsNotifier(tray = tray, hostOs = os)
+            val autostart = OsAutostartController(hostOs = os)
             val crashReporter = com.bitchat.desktop.sentry.SentryCrashReporter(
                 contextProvider = { android.content.Context(paths.dataDir) },
             ).apply {
                 init(release = System.getProperty("skein.version") ?: "1.0.0")
             }
-            return DesktopPlatform(paths = paths, keyStore = keyStore, crashReporter = crashReporter)
+            return DesktopPlatform(
+                paths = paths,
+                keyStore = keyStore,
+                ble = ble,
+                notifications = notifications,
+                tray = tray,
+                autostart = autostart,
+                crashReporter = crashReporter,
+            )
         }
     }
 }
