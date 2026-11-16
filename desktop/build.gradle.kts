@@ -302,6 +302,9 @@ tasks.matching { it.name == "createDistributable" }.configureEach {
         val foreignTags = allTags.filter { it != keepTag }
         outputs.files.forEach { root ->
             root.walkTopDown()
+                .filter { f -> f.isFile && f.name == "skein-ble-mac" }
+                .forEach { it.setExecutable(true, false) }
+            root.walkTopDown()
                 .filter { f ->
                     f.isFile && f.extension == "jar" &&
                         (f.name.startsWith("skiko-awt-runtime-") || f.name.startsWith("desktop-jvm-")) &&
