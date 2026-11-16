@@ -259,4 +259,19 @@ tasks.matching { it.name.startsWith("package") }.configureEach {
     }
 }
 
+val buildMacBleHelper = tasks.register<Exec>("buildMacBleHelper") {
+    onlyIf { System.getProperty("os.name").lowercase().contains("mac") }
+    val src = file("ble-mac/Sources/main.swift")
+    val out = layout.buildDirectory.file("ble-mac/skein-ble-mac")
+    inputs.file(src)
+    outputs.file(out)
+    doFirst {
+        out.get().asFile.parentFile.mkdirs()
+    }
+    commandLine(
+        "swiftc", "-O", "-framework", "CoreBluetooth", "-framework", "Foundation",
+        src.absolutePath, "-o", out.get().asFile.absolutePath,
+    )
+}
+
 // `./gradlew :desktop:run --args=--smoke` uses the run task the Compose plugin registers.
