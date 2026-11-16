@@ -106,7 +106,33 @@ class WearMeshService private constructor(private val context: Context) {
     val linkedClient = LinkedPhoneClient(context, serviceScope, linkChannel) { myPeerID }
 
     /** True while linked and next to the phone: the phone is on the mesh, the watch mirrors it. */
-    val isMirrored: Boolean get() = linkedClient.mirroring
+    val isMirrored: Boolean get() = linkedClient.mirroring || codeLinkFollowing
+
+    /** Linked by code and the phone is on the same Wi-Fi: mirror it (see [com.bitchat.watch.link.CodeLink]). */
+    @Volatile
+    var codeLinkFollowing = false
+        private set
+
+    /** The code link says whether to follow the phone (radio off, send through it) or not. */
+    fun setCodeLinkFollowing(following: Boolean) {
+        synchronized(radioLock) {
+            if (codeLinkFollowing == following) return
+            codeLinkFollowing = following
+            if (!isActive) return
+            if (following) {
+                enterTethered()
+            } else if (linkModeController.mode.value == LinkMode.STANDALONE) {
+                enterStandalone()
+            }
+        }
+        Log.i(TAG, if (following) "Following the code-linked phone" else "Code-linked phone out of reach")
+        // The phone fetches internet messages for both while the watch follows it.
+        internet.setSuspended(following || (linkedClient.linked && linkModeController.mode.value == LinkMode.TETHERED))
+        if (!following) serviceScope.launch { meshCore.sendBroadcastAnnounce() }
+    }
+
+    /** A nickname set on the code-linked phone. */
+    fun applyLinkedNickname(name: String) = applyNickname(name.trim().take(32))
 
     /** Private messages over the internet (Nostr), when not mirroring a linked phone. */
     val internet = WatchNostrClient(
@@ -449,6 +475,8 @@ class WearMeshService private constructor(private val context: Context) {
             // Start on the watch's own radio; the controller moves to the phone if one answers.
             enterStandalone()
             linkedClient.start()
+            // Linked to a phone by code: rejoin its group over Wi-Fi.
+            com.bitchat.watch.link.CodeLink.startIfNeeded(context)
             if (linkedClient.linked) linkChannel.start() else phoneLink.start()
             linkModeController.start()
             internet.start()
@@ -481,6 +509,8 @@ class WearMeshService private constructor(private val context: Context) {
             RendezvousAlarmReceiver.engine = null
             try { context.unregisterReceiver(exactAlarmAccessReceiver) } catch (_: Exception) { }
             linkedClient.stop()
+            com.bitchat.watch.link.CodeLink.stop(context)
+            codeLinkFollowing = false
             if (linkedClient.linked) linkChannel.stop() else phoneLink.stop()
             meshCore.stopCore()
             connectionManager.stopServices()
@@ -576,6 +606,23 @@ class WearMeshService private constructor(private val context: Context) {
      */
     fun markConversationRead(peerID: String) {
         if (!isActive) return
+        if (codeLinkFollowing) {
+            val conversationID = com.bitchat.android.services.ContactDirectory.canonicalConversationId(peerID)
+            AppStateStore.privateMessages.value.entries
+                .filter {
+                    com.bitchat.android.services.ContactDirectory.canonicalConversationId(it.key)
+                        .equals(conversationID, ignoreCase = true)
+                }
+                .flatMap { it.value }
+                .filter { it.senderPeerID != myPeerID && !AppStateStore.isPrivateMessageRead(it.id) }
+                .forEach { message ->
+                    AppStateStore.markPrivateMessageRead(message.id)
+                    com.bitchat.watch.link.CodeLink.forward(
+                        com.bitchat.android.linked.LinkCommand.ReadReceipt(message.id, message.senderPeerID ?: peerID)
+                    )
+                }
+            return
+        }
         if (isMirrored) {
             linkedClient.markRead(peerID)
             return
@@ -842,20 +889,53 @@ class WearMeshService private constructor(private val context: Context) {
     fun getPeerFingerprint(peerID: String): String? = meshCore.getPeerFingerprint(peerID)
 
     fun getPeerNicknames(): Map<String, String> =
-        if (isMirrored) meshCore.getPeerNicknames() + linkedClient.peerNicknames() else meshCore.getPeerNicknames()
+        if (isMirrored) meshCore.getPeerNicknames() + mirroredNicknames() else meshCore.getPeerNicknames()
 
     fun getPeerRSSI(): Map<String, Int> = if (isMirrored) emptyMap() else meshCore.getPeerRSSI()
 
     fun getPeerNickname(peerID: String): String? =
-        (if (isMirrored) linkedClient.peerNicknames()[peerID] else null) ?: meshCore.getPeerNickname(peerID)
+        (if (isMirrored) mirroredNicknames()[peerID] else null) ?: meshCore.getPeerNickname(peerID)
 
     /** Mirroring: ask the phone to send a public message. Returns false if it could not be handed over. */
     fun sendPublicViaPhone(messageID: String, content: String): Boolean =
-        linkedClient.sendPublic(messageID, content)
+        if (codeLinkFollowing) {
+            com.bitchat.watch.link.CodeLink.forward(
+                com.bitchat.android.linked.LinkCommand.SendPublic(messageID, content, emptyList(), null)
+            )
+        } else {
+            linkedClient.sendPublic(messageID, content)
+        }
 
     /** Mirroring: ask the phone to send a private message. */
     fun sendPrivateViaPhone(messageID: String, peerID: String, recipientNickname: String, content: String): Boolean =
-        linkedClient.sendPrivate(messageID, peerID, recipientNickname, content)
+        if (codeLinkFollowing) {
+            com.bitchat.watch.link.CodeLink.forward(
+                com.bitchat.android.linked.LinkCommand.SendPrivate(messageID, content, peerID, recipientNickname)
+            )
+        } else {
+            linkedClient.sendPrivate(messageID, peerID, recipientNickname, content)
+        }
+
+    /** Mirroring: ask the phone to send a voice note (the watch keeps showing its own copy). */
+    fun sendVoiceViaPhone(messageID: String, peerID: String?, recipientNickname: String, file: java.io.File): Boolean =
+        if (codeLinkFollowing) {
+            runCatching { file.readBytes() }.getOrNull()?.let { bytes ->
+                com.bitchat.watch.link.CodeLink.forward(
+                    com.bitchat.android.linked.LinkCommand.SendFile(messageID, peerID, file.name, "audio/mp4", "audio"),
+                    bytes
+                )
+            } == true
+        } else {
+            linkedClient.sendVoice(messageID, peerID, recipientNickname, file)
+        }
+
+    /** Nicknames of the peers the mirrored phone sees. */
+    private fun mirroredNicknames(): Map<String, String> =
+        if (codeLinkFollowing) {
+            com.bitchat.watch.link.CodeLink.mirrorPeers.value.orEmpty().associate { it.peerID to it.nickname }
+        } else {
+            linkedClient.peerNicknames()
+        }
 
     fun getDebugStatus(): String = meshCore.getDebugStatus(
         transportInfo = transport.getTransportDebugInfo(),

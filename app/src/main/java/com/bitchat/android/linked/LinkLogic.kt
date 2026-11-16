@@ -26,11 +26,33 @@ sealed interface LinkRole {
  * exactly one radio.
  */
 object LeaderElection {
+    /**
+     * Phones and tablets lead before watches: a watch's radio is weaker and its battery smaller,
+     * so it mirrors whenever a linked phone is in reach. Watch device IDs carry
+     * [LinkDeviceIds.WATCH_PREFIX]; among equals the smallest ID still wins.
+     */
+    private fun rank(id: String): String = (if (LinkDeviceIds.isWatch(id)) "1" else "0") + id
+
     fun roleFor(myDeviceId: String, reachable: Collection<String>): LinkRole {
         val others = reachable.filter { it != myDeviceId }
         if (others.isEmpty()) return LinkRole.Standalone
-        val smallest = others.min()
-        return if (smallest < myDeviceId) LinkRole.Follower(smallest) else LinkRole.Leader
+        val best = others.minBy(::rank)
+        return if (rank(best) < rank(myDeviceId)) LinkRole.Follower(best) else LinkRole.Leader
+    }
+}
+
+/** Device IDs: 32 hex characters; watches start with [WATCH_PREFIX], phones never do. */
+object LinkDeviceIds {
+    const val WATCH_PREFIX = "f7a7"
+
+    fun isWatch(id: String): Boolean = id.startsWith(WATCH_PREFIX)
+
+    fun generate(watch: Boolean, random: () -> String): String {
+        while (true) {
+            val id = random()
+            if (watch) return WATCH_PREFIX + id.drop(WATCH_PREFIX.length)
+            if (!isWatch(id)) return id
+        }
     }
 }
 

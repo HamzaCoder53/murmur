@@ -20,8 +20,8 @@ android {
         targetSdk = libs.versions.targetSdk.get().toInt()
         // Wear releases use a separate high range because Play requires every artifact in
         // one application ID to have a unique version code across all form factors.
-        versionCode = 1_000_000_018
-        versionName = "0.9.0"
+        versionCode = 1_000_000_019
+        versionName = "0.10.0"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -135,6 +135,18 @@ val sharedSourceIncludes = listOf(
     "com/bitchat/android/util/ByteArrayExtensions.kt",
     "com/bitchat/android/util/ByteArrayWrapper.kt",
     "com/bitchat/android/util/BinaryEncodingUtils.kt",
+    // Linked devices (shared identity over local Wi-Fi), for linking a watch with a code.
+    "com/bitchat/android/linked/LinkCoordinator.kt",
+    "com/bitchat/android/linked/LinkCrypto.kt",
+    "com/bitchat/android/linked/LinkHandshake.kt",
+    "com/bitchat/android/linked/LinkLogic.kt",
+    "com/bitchat/android/linked/LinkProtocol.kt",
+    "com/bitchat/android/linked/LinkQr.kt",
+    "com/bitchat/android/linked/LinkSession.kt",
+    "com/bitchat/android/linked/LinkStore.kt",
+    "com/bitchat/android/linked/LinkTransport.kt",
+    "com/bitchat/android/linked/LinkedAppBridge.kt",
+    "com/bitchat/android/linked/PasskeyPairing.kt",
     // Phone-watch tunnel: one contract, channel and transport shared by both ends.
     "com/bitchat/android/wearlink/WearLinkContract.kt",
     "com/bitchat/android/wearlink/WearLinkChannel.kt",

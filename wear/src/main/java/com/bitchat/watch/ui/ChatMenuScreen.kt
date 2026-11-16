@@ -1,5 +1,6 @@
 package com.bitchat.watch.ui
 
+import androidx.compose.material.icons.filled.Dialpad
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Notifications
@@ -95,7 +96,8 @@ fun ChatMenuScreen(
     onQuit: () -> Unit,
     onOpenHelp: () -> Unit = {},
     onOpenLocations: () -> Unit = {},
-    onOpenNotifications: () -> Unit = {}
+    onOpenNotifications: () -> Unit = {},
+    onOpenCodeLink: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val palette = LocalBitchatPalette.current
@@ -194,6 +196,26 @@ fun ChatMenuScreen(
                 }
             }
             item { BroadcastPowerButton() }
+            // A phone this watch is not paired with through Wear OS: link by typing its code.
+            if (com.bitchat.watch.mesh.WearMeshService.peek()?.linkedClient?.linked != true) {
+                item {
+                    FilledTonalButton(
+                        onClick = onOpenCodeLink,
+                        modifier = Modifier.fillMaxWidth(),
+                        icon = { Icon(imageVector = Icons.Filled.Dialpad, contentDescription = null) },
+                        secondaryLabel = {
+                            Text(
+                                stringResource(
+                                    if (com.bitchat.watch.link.CodeLink.isLinked(context)) R.string.code_link_menu_linked
+                                    else R.string.code_link_menu_detail
+                                ),
+                                color = palette.textTertiary,
+                                maxLines = 1
+                            )
+                        },
+                    ) { Text(stringResource(R.string.code_link_title), maxLines = 1) }
+                }
+            }
             item {
                 FilledTonalButton(
                     onClick = onOpenHelp,

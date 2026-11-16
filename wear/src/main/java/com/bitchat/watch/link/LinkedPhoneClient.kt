@@ -137,6 +137,8 @@ class LinkedPhoneClient(
 
     fun requestLink() {
         if (linked) return
+        // Already sharing a phone's identity by code: one linked identity at a time.
+        if (CodeLink.isLinked(context)) return
         val node = phoneNode()
         if (node == null) {
             _state.value = State.NO_PHONE

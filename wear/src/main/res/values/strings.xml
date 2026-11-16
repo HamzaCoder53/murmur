@@ -229,4 +229,18 @@
     <string name="radio_power_low">Low</string>
     <string name="radio_power_medium">Medium</string>
     <string name="radio_power_high">High</string>
+    <!-- Link with a code -->
+    <string name="code_link_title">Link with a code</string>
+    <string name="code_link_menu_detail">Phone not paired to watch</string>
+    <string name="code_link_menu_linked">Linked by code</string>
+    <string name="code_link_intro">On the phone: Settings → Linked devices → Link a new device. Type the 6-digit code here. Both on the same Wi-Fi.</string>
+    <string name="code_link_button">Link</string>
+    <string name="code_link_searching">Looking for your phone…</string>
+    <string name="code_link_confirm_on_phone">Tap Allow on your phone</string>
+    <string name="code_link_transferring">Copying your chats…</string>
+    <string name="code_link_restarting">Linked. Restarting…</string>
+    <string name="code_link_failed">Didn\'t work. Check the code and Wi-Fi, then get a new code.</string>
+    <string name="code_link_linked">Linked to your phone. In sync when on the same Wi-Fi.</string>
+    <string name="code_link_following">Using your phone over Wi-Fi.</string>
+    <string name="code_link_unlink">Unlink</string>
 </resources>

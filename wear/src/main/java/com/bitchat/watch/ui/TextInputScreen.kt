@@ -205,6 +205,7 @@ internal fun WatchEditText(
     imeAction: Int = android.view.inputmethod.EditorInfo.IME_ACTION_SEND,
     centered: Boolean = false,
     maxLength: Int? = null,
+    numeric: Boolean = false,
 ) {
     val palette = LocalBitchatPalette.current
     val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
@@ -227,9 +228,13 @@ internal fun WatchEditText(
                     setColor(cursorColor)
                     setSize((2 * ctx.resources.displayMetrics.density).toInt(), 0)
                 }
-                inputType = android.text.InputType.TYPE_CLASS_TEXT or
-                    android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or
-                    android.text.InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
+                inputType = if (numeric) {
+                    android.text.InputType.TYPE_CLASS_NUMBER
+                } else {
+                    android.text.InputType.TYPE_CLASS_TEXT or
+                        android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or
+                        android.text.InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
+                }
                 imeOptions = imeAction
                 if (centered) gravity = android.view.Gravity.CENTER
                 maxLength?.let { filters = arrayOf(android.text.InputFilter.LengthFilter(it)) }

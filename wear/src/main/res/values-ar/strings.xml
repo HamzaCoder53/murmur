@@ -259,4 +259,18 @@
     <string name="radio_power_low">منخفضة</string>
     <string name="radio_power_medium">متوسطة</string>
     <string name="radio_power_high">عالية</string>
+    <!-- الربط برمز -->
+    <string name="code_link_title">الربط برمز</string>
+    <string name="code_link_menu_detail">هاتف غير مقترن بالساعة</string>
+    <string name="code_link_menu_linked">مرتبطة برمز</string>
+    <string name="code_link_intro">على الهاتف: الإعدادات ← الأجهزة المرتبطة ← ربط جهاز جديد. اكتب الرمز المكوّن من 6 أرقام هنا. كلاهما على شبكة Wi-Fi نفسها.</string>
+    <string name="code_link_button">ربط</string>
+    <string name="code_link_searching">جارٍ البحث عن هاتفك…</string>
+    <string name="code_link_confirm_on_phone">اضغط «سماح» على هاتفك</string>
+    <string name="code_link_transferring">جارٍ نسخ محادثاتك…</string>
+    <string name="code_link_restarting">تم الربط. إعادة التشغيل…</string>
+    <string name="code_link_failed">لم ينجح. تحقق من الرمز وشبكة Wi-Fi، ثم احصل على رمز جديد.</string>
+    <string name="code_link_linked">مرتبطة بهاتفك. متزامنة عند الاتصال بشبكة Wi-Fi نفسها.</string>
+    <string name="code_link_following">تستخدم هاتفك عبر Wi-Fi.</string>
+    <string name="code_link_unlink">إلغاء الربط</string>
 </resources>

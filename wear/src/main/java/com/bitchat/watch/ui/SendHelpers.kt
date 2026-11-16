@@ -131,7 +131,7 @@ internal fun sendVoiceNote(mesh: WearMeshService, peerID: String?, path: String)
         // Linked and next to the phone: upload it; the phone sends it and shows it too.
         val messageID = java.util.UUID.randomUUID().toString().uppercase()
         val recipient = peerID?.let { mesh.getPeerNickname(it) ?: it.take(8) }.orEmpty()
-        val handed = mesh.linkedClient.sendVoice(messageID, peerID, recipient, file)
+        val handed = mesh.sendVoiceViaPhone(messageID, peerID, recipient, file)
         val echo = BitchatMessage(
             id = messageID,
             sender = mesh.nickname,

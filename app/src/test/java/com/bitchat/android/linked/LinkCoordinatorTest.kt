@@ -207,4 +207,14 @@ class LinkCoordinatorTest {
         jobA.cancel()
         jobB.cancel()
     }
+
+    @Test
+    fun `a watch follows a linked phone whatever their IDs`() {
+        val watch = LinkDeviceIds.WATCH_PREFIX + "0".repeat(28)
+        val phone = "f" + "9".repeat(31)
+        assertEquals(LinkRole.Follower(phone), LeaderElection.roleFor(watch, listOf(phone)))
+        assertEquals(LinkRole.Leader, LeaderElection.roleFor(phone, listOf(watch)))
+        assertEquals(true, LinkDeviceIds.isWatch(LinkDeviceIds.generate(true) { "a".repeat(32) }))
+        assertEquals(false, LinkDeviceIds.isWatch(LinkDeviceIds.generate(false) { "b".repeat(32) }))
+    }
 }

@@ -94,7 +94,9 @@ class LinkTransport(
     context: Context,
     private val scope: CoroutineScope,
     private val store: LinkStore,
-    private val coordinator: LinkCoordinator
+    private val coordinator: LinkCoordinator,
+    /** New outgoing sockets; a watch passes its Wi-Fi network's factory (its default may be Bluetooth). */
+    private val newSocket: () -> Socket = { Socket() }
 ) {
     companion object {
         private const val TAG = "LinkTransport"
@@ -390,7 +392,7 @@ class LinkTransport(
     }
 
     private fun dialTcp(host: String, port: Int): SocketFrameIo? = try {
-        val socket = Socket()
+        val socket = newSocket()
         socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
         SocketFrameIo(socket)
     } catch (_: Exception) {

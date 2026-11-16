@@ -88,6 +88,22 @@ object WearPeerIdentityState : FavoritesChangeListener {
         mesh: WearMeshService
     ): Boolean {
         check(initialized) { "WearPeerIdentityState must be initialized by the application" }
+        if (mesh.codeLinkFollowing) {
+            // Linked by code and following the phone: the phone favorites.
+            val keyHex = com.bitchat.watch.link.CodeLink.mirrorPeers.value
+                ?.firstOrNull { it.peerID == peerID }?.noiseKeyHex ?: return false
+            val key = com.bitchat.android.services.ContactIdentityResolver.bytesFromHex(keyHex) ?: return false
+            if (!com.bitchat.watch.link.CodeLink.forward(
+                    com.bitchat.android.linked.LinkCommand.SetFavorite(peerID, isFavorite)
+                )
+            ) return false
+            FavoritesPersistenceService.shared.updateFavoriteStatus(
+                noisePublicKey = key,
+                nickname = mesh.getPeerNickname(peerID) ?: peerID.take(8),
+                isFavorite = isFavorite
+            )
+            return true
+        }
         if (mesh.isMirrored) {
             // Linked and next to the phone: the phone favorites (it is the one on the mesh).
             val key = mesh.linkedClient.noiseKey(peerID) ?: return false

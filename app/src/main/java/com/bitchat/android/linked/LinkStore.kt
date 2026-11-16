@@ -77,7 +77,7 @@ class InMemoryLinkStore(override val myDeviceId: String) : LinkStore {
 }
 
 /** [LinkStore] in an encrypted preferences file of its own (not part of any identity bundle). */
-class PrefsLinkStore(context: Context) : LinkStore {
+class PrefsLinkStore(context: Context, private val isWatch: Boolean = false) : LinkStore {
     companion object {
         private const val FILE = "skein_linked_devices"
         private const val KEY_DEVICE_ID = "device_id"
@@ -101,7 +101,8 @@ class PrefsLinkStore(context: Context) : LinkStore {
     }
 
     override val myDeviceId: String = synchronized(this) {
-        prefs.getString(KEY_DEVICE_ID, null)?.takeIf(LinkHandshake::isDeviceId) ?: LinkCrypto.randomBytes(16).hex().also {
+        prefs.getString(KEY_DEVICE_ID, null)?.takeIf(LinkHandshake::isDeviceId)
+            ?: LinkDeviceIds.generate(isWatch) { LinkCrypto.randomBytes(16).hex() }.also {
             prefs.edit().putString(KEY_DEVICE_ID, it).commit()
         }
     }
