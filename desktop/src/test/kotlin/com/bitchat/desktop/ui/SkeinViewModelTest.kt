@@ -113,6 +113,37 @@ class SkeinViewModelTest {
         vm.selectConversation(loc)
         vm.leaveLocation("u4pr")
         assertEquals(ConversationId.Mesh, vm.state.value.selected)
+        assertTrue("left channel leaves the sidebar despite its messages", vm.state.value.locationChannels.isEmpty())
+    }
+
+    @Test
+    fun `stand-in location channels and history are reported unavailable`() {
+        val vm = SkeinViewModel(
+            ports().copy(
+                history = InMemoryHistoryPort(isAvailable = false),
+                locations = InMemoryLocationChannelsPort(isAvailable = false),
+            ),
+            scope,
+        )
+        assertFalse(vm.state.value.locationChannelsAvailable)
+        assertFalse(vm.state.value.historyAvailable)
+        assertFalse("joining is refused", vm.joinLocation("u4pr"))
+        assertTrue(vm().state.value.locationChannelsAvailable)
+    }
+
+    @Test
+    fun `messages arriving while the window is hidden stay unread until it is shown`() {
+        messaging.addPeer(PeerSummary(alicePeer, "alice"))
+        val vm = vm()
+        vm.setWindowActive(false)
+        messaging.receive(incoming("m1", ConversationId.Mesh, alicePeer, "alice", "while away"))
+        assertEquals(1, vm.state.value.mesh.unread)
+        assertEquals(1, vm.state.value.totalUnread)
+
+        vm.setWindowActive(true)
+        assertEquals(0, vm.state.value.mesh.unread)
+        messaging.receive(incoming("m2", ConversationId.Mesh, alicePeer, "alice", "back"))
+        assertEquals(0, vm.state.value.mesh.unread)
     }
 
     @Test

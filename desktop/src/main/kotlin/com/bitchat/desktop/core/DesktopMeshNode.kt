@@ -20,6 +20,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -47,6 +49,8 @@ interface DirectLinkBinder {
 class DesktopMeshNode(
     val identity: DesktopIdentity,
     private val transport: MeshTransport,
+    /** How long a private message waits for a Noise session before it is marked failed. */
+    private val pendingPrivateTimeoutMs: Long = PENDING_PRIVATE_TIMEOUT_MS,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val maxTtl: UByte = AppConstants.MESSAGE_TTL_HOPS
@@ -110,6 +114,7 @@ class DesktopMeshNode(
         },
         hooks = MeshCore.Hooks(
             onAnnounceProcessed = { routed, _ ->
+                bumpPeerState()
                 // Only a validated full-TTL announce marks a peer as directly connected.
                 DirectLinkAnnouncementPolicy.observationFor(routed, maxTtl)?.let { obs ->
                     val bound = (transport as? DirectLinkBinder)?.bindPeer(obs.relayAddress, obs.peerID) ?: true
@@ -129,12 +134,12 @@ class DesktopMeshNode(
         identity.encryptionService.onSessionEstablished = { peerID ->
             prevEstablished?.invoke(peerID)
             flushPendingPrivate(peerID)
-            _sessionVersion.value++
+            bumpPeerState()
         }
         val prevLost = identity.encryptionService.onSessionLost
         identity.encryptionService.onSessionLost = { peerID ->
             prevLost?.invoke(peerID)
-            _sessionVersion.value++
+            bumpPeerState()
         }
         core.delegate = object : MeshDelegate {
             override fun didReceiveMessage(message: BitchatMessage) {
@@ -224,6 +229,10 @@ class DesktopMeshNode(
     /**
      * Sends a private message. The local copy and the wire message share one ID so delivery acks
      * and read receipts from the recipient update the local copy's [DeliveryStatus].
+     *
+     * Without an established Noise session the message is queued as [DeliveryStatus.Sending], a
+     * handshake is started, and it goes out when the session is established, or is marked
+     * [DeliveryStatus.Failed] after [pendingPrivateTimeoutMs].
      */
     fun sendPrivate(
         text: String,
@@ -231,7 +240,7 @@ class DesktopMeshNode(
         recipientNickname: String,
         messageID: String? = null,
     ) {
-        if (text.isEmpty()) return
+        if (text.isEmpty() || recipientPeerID.isEmpty()) return
         val id = messageID ?: UUID.randomUUID().toString()
         val hasSession = hasEstablishedSession(recipientPeerID)
         val local = BitchatMessage(
@@ -247,14 +256,28 @@ class DesktopMeshNode(
         addPrivate(recipientPeerID, local, read = true)
         if (hasSession) {
             core.sendPrivateMessage(text, recipientPeerID, recipientNickname, id)
-        } else {
-            synchronized(lock) {
-                pendingPrivate.getOrPut(recipientPeerID) { mutableListOf() }
-                    .add(PendingPrivate(id, text, recipientNickname))
-            }
+            return
+        }
+        // [lock] is never held while calling into MeshCore, so session callbacks cannot deadlock.
+        val startHandshake = synchronized(lock) {
+            val queue = pendingPrivate.getOrPut(recipientPeerID) { mutableListOf() }
+            queue.add(PendingPrivate(id, text, recipientNickname))
+            queue.size == 1
+        }
+        if (hasEstablishedSession(recipientPeerID)) {
+            // The session came up between the check above and queueing: send now.
+            flushPendingPrivate(recipientPeerID)
+        } else if (startHandshake) {
             core.initiateNoiseHandshake(recipientPeerID)
         }
+        scope.launch {
+            delay(pendingPrivateTimeoutMs)
+            expirePendingPrivate(recipientPeerID, id)
+        }
     }
+
+    /** True while at least one private message to [peerID] waits for a Noise session. */
+    fun hasPendingPrivate(peerID: String): Boolean = synchronized(lock) { !pendingPrivate[peerID].isNullOrEmpty() }
 
     private fun flushPendingPrivate(peerID: String) {
         val queued = synchronized(lock) { pendingPrivate.remove(peerID) } ?: return
@@ -262,6 +285,20 @@ class DesktopMeshNode(
             updateDeliveryStatus(item.id, DeliveryStatus.Sent)
             core.sendPrivateMessage(item.text, peerID, item.recipientNickname, item.id)
         }
+    }
+
+    private fun expirePendingPrivate(peerID: String, id: String) {
+        synchronized(lock) {
+            val queue = pendingPrivate[peerID] ?: return
+            if (!queue.removeAll { it.id == id }) return
+            if (queue.isEmpty()) pendingPrivate.remove(peerID)
+            updateDeliveryStatus(id, DeliveryStatus.Failed("No secure session"))
+        }
+        bumpPeerState()
+    }
+
+    private fun bumpPeerState() {
+        synchronized(lock) { _sessionVersion.value++ }
     }
 
     fun sendReadReceipt(messageID: String, recipientPeerID: String) =
@@ -341,6 +378,12 @@ class DesktopMeshNode(
 
     fun peerNickname(peerID: String): String? = core.getPeerNickname(peerID)
 
+    /** Full Noise static-key fingerprint (64 hex) of a peer once its key is known, else null. */
+    fun peerFingerprint(peerID: String): String? = core.getPeerFingerprint(peerID)
+
+    /** The peer's Noise static public key, if an announce or handshake has revealed it. */
+    fun peerNoisePublicKey(peerID: String): ByteArray? = core.getPeerInfo(peerID)?.noisePublicKey
+
     fun stop() {
         try { core.sendLeaveAnnouncement() } catch (_: Exception) { }
         core.stopCore()
@@ -349,14 +392,16 @@ class DesktopMeshNode(
     }
 
     companion object {
-        private const val MAX_MESSAGES = 1_000
+        const val MAX_MESSAGES = 1_000
+        const val PENDING_PRIVATE_TIMEOUT_MS = 30_000L
 
         fun overLoopback(
             identity: DesktopIdentity,
             hub: LoopbackHub,
+            pendingPrivateTimeoutMs: Long = PENDING_PRIVATE_TIMEOUT_MS,
         ): Pair<DesktopMeshNode, LoopbackTransport> {
             val transport = hub.endpoint(identity.peerID)
-            val node = DesktopMeshNode(identity, transport)
+            val node = DesktopMeshNode(identity, transport, pendingPrivateTimeoutMs)
             transport.listener = LoopbackTransport.Listener(node::receive)
             return node to transport
         }

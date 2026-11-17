@@ -187,11 +187,6 @@ fun runDesktopApp(
 
     application {
         var windowVisible by remember { mutableStateOf(!startHidden) }
-        val uiState by viewModel.state.collectAsState()
-        val totalUnread = uiState.privateChats.sumOf { it.unread } + uiState.mesh.unread
-        LaunchedEffect(totalUnread) {
-            platform.tray.setUnreadCount(totalUnread)
-        }
         var windowFocused by remember { mutableStateOf(false) }
         LaunchedEffect(node) {
             // Only messages newly received from peers; the preview names the sender, never the text.
@@ -216,6 +211,8 @@ fun runDesktopApp(
             appScope.cancel()
             exitApplication()
         }
+        val uiState by viewModel.state.collectAsState()
+        LaunchedEffect(windowVisible) { if (!windowVisible) viewModel.setWindowActive(false) }
         LaunchedEffect(platform.tray) {
             platform.tray.show(
                 tooltip = "Skein",
@@ -223,6 +220,8 @@ fun runDesktopApp(
                 onQuit = shutdown,
             )
         }
+        // Declared after the tray is shown so the first count reaches a live icon.
+        LaunchedEffect(uiState.totalUnread) { platform.tray.setUnreadCount(uiState.totalUnread) }
         Window(
             onCloseRequest = {
                 if (platform.tray.isSupported) windowVisible = false else shutdown()
@@ -232,7 +231,11 @@ fun runDesktopApp(
             state = rememberWindowState(width = 1080.dp, height = 720.dp),
         ) {
             val focused = LocalWindowInfo.current.isWindowFocused
-            LaunchedEffect(focused) { windowFocused = focused }
+            LaunchedEffect(windowVisible, focused) {
+                windowFocused = focused
+                // Messages only count as read while the window is visible and focused.
+                viewModel.setWindowActive(windowVisible && focused)
+            }
             SkeinDesktopRoot(viewModel, ports, bleState)
         }
     }

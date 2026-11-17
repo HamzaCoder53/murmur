@@ -1,7 +1,6 @@
 package com.bitchat.desktop.ui
 
 import android.content.Context
-import com.bitchat.android.mesh.PeerFingerprintManager
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.DeliveryStatus
 import com.bitchat.desktop.core.DesktopMeshNode
@@ -10,6 +9,7 @@ import com.bitchat.desktop.platform.DesktopPlatform
 import com.bitchat.desktop.platform.HostOs
 import java.util.Date
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 /**
  * [MessagingPort] over the real [DesktopMeshNode]. The node keeps private messages per
@@ -25,8 +26,9 @@ import kotlinx.coroutines.flow.update
  */
 class MeshMessagingAdapter(
     private val node: DesktopMeshNode,
-    scope: CoroutineScope,
-    private val fingerprintLookup: (String) -> String? = { PeerFingerprintManager.getInstance().getFingerprintForPeer(it) },
+    private val scope: CoroutineScope,
+    private val fingerprintLookup: (String) -> String? = node::peerFingerprint,
+    private val handshakeTimeoutMs: Long = DesktopMeshNode.PENDING_PRIVATE_TIMEOUT_MS,
 ) : MessagingPort {
     override val myPeerID: String get() = node.peerID
     override val myFingerprint: String get() = node.identity.fingerprint
@@ -45,12 +47,16 @@ class MeshMessagingAdapter(
                 chats.flatMap { (peerID, list) -> list.map { toChatMessage(it, myPeerID, ConversationId.Private(peerID)) } }
         }.onEach { _messages.value = it }.launchIn(scope)
 
+        // Session state and nicknames have no flow of their own: the node bumps sessionVersion on
+        // session established/lost, on a queued message timing out and on every processed announce.
         combine(node.peers, node.sessionVersion, handshaking) { ids, _, pending ->
+            val done = pending.filterTo(mutableSetOf()) { node.hasEstablishedSession(it) }
+            if (done.isNotEmpty()) handshaking.update { it - done }
             ids.map { id ->
                 val established = node.hasEstablishedSession(id)
                 val session = when {
                     established -> SessionState.ESTABLISHED
-                    id in pending -> SessionState.HANDSHAKING
+                    id in pending || node.hasPendingPrivate(id) -> SessionState.HANDSHAKING
                     else -> SessionState.NONE
                 }
                 PeerSummary(id, node.peerNickname(id) ?: id.take(8), session)
@@ -63,12 +69,22 @@ class MeshMessagingAdapter(
     override fun sendPrivate(peerID: String, text: String) {
         val nick = node.peerNickname(peerID) ?: peerID.take(8)
         node.sendPrivate(text, peerID, nick)
+        if (!node.hasEstablishedSession(peerID)) markHandshaking(peerID)
     }
 
     override fun startSession(peerID: String) {
         if (node.hasEstablishedSession(peerID)) return
-        handshaking.update { it + peerID }
+        markHandshaking(peerID)
         node.initiateHandshake(peerID)
+    }
+
+    private fun markHandshaking(peerID: String) {
+        handshaking.update { it + peerID }
+        // No handshake-failed callback exists: give up showing "Handshaking" after the timeout.
+        scope.launch {
+            delay(handshakeTimeoutMs)
+            handshaking.update { it - peerID }
+        }
     }
 
     override fun peerFingerprint(peerID: String): String? = fingerprintLookup(peerID)

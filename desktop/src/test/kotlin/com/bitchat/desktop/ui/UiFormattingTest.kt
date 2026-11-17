@@ -27,6 +27,9 @@ class UiFormattingTest {
         assertEquals(listOf("alice"), parseMentions("hi @alice and @nobody @alice", setOf("alice", "bob")))
         assertTrue(mentionsNickname("yo @Tester!", "tester"))
         assertFalse(mentionsNickname("email tester@example", "tester2"))
+        assertEquals("case-insensitive, known spelling", listOf("tester"), parseMentions("hey @Tester", setOf("tester")))
+        assertTrue("glued to a word is not a mention", parseMentions("user@alice", setOf("alice")).isEmpty())
+        assertFalse(mentionsNickname("user@tester", "tester"))
     }
 
     @Test

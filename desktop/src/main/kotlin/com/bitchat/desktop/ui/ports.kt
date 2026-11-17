@@ -70,6 +70,8 @@ interface ContactsPort {
 
 /** Message history persistence (DesktopStore). Only used while "save history" is on. */
 interface HistoryPort {
+    /** False for a stand-in that keeps nothing across restarts; the UI then shows the setting as unavailable. */
+    val isAvailable: Boolean get() = true
     fun load(): List<ChatMessage>
     fun append(message: ChatMessage)
     fun clear()
@@ -77,6 +79,8 @@ interface HistoryPort {
 
 /** Geohash location channels over the Nostr internet client. */
 interface LocationChannelsPort {
+    /** False for a stand-in that transmits nothing; the UI then hides joining channels. */
+    val isAvailable: Boolean get() = true
     val channels: StateFlow<List<LocationChannelInfo>>
     val messages: StateFlow<List<ChatMessage>>
     fun join(geohash: String)
@@ -198,7 +202,7 @@ class InMemoryContactsPort : ContactsPort {
     }
 }
 
-class InMemoryHistoryPort : HistoryPort {
+class InMemoryHistoryPort(override val isAvailable: Boolean = true) : HistoryPort {
     private val stored = mutableListOf<ChatMessage>()
     override fun load(): List<ChatMessage> = synchronized(stored) { stored.toList() }
     override fun append(message: ChatMessage) { synchronized(stored) { stored += message } }
@@ -208,6 +212,7 @@ class InMemoryHistoryPort : HistoryPort {
 class InMemoryLocationChannelsPort(
     private val myNickname: () -> String = { "anon1234" },
     private val clock: () -> Date = { Date() },
+    override val isAvailable: Boolean = true,
 ) : LocationChannelsPort {
     private val _channels = MutableStateFlow<List<LocationChannelInfo>>(emptyList())
     override val channels: StateFlow<List<LocationChannelInfo>> = _channels.asStateFlow()

@@ -84,7 +84,9 @@ fun Sidebar(state: SkeinUiState, vm: SkeinViewModel, modifier: Modifier = Modifi
             items(state.locationChannels, key = { "loc-" + it.title }) { c ->
                 ConversationItem(c, c.lastMessage?.text, state, vm)
             }
-            item {
+            if (!state.locationChannelsAvailable) {
+                item { Hint(s.comingSoon) }
+            } else item {
                 Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
                         geohash,
@@ -333,7 +335,10 @@ private fun AnnotatedString.Builder.appendWithMentions(text: String, mentions: L
         append(text)
         return
     }
-    val regex = Regex("@(" + mentions.joinToString("|") { Regex.escape(it) } + ")(?![\\p{L}\\p{N}_])")
+    val regex = Regex(
+        "(?<![\\p{L}\\p{N}_])@(" + mentions.joinToString("|") { Regex.escape(it) } + ")(?![\\p{L}\\p{N}_])",
+        RegexOption.IGNORE_CASE,
+    )
     var last = 0
     regex.findAll(text).forEach { match ->
         append(text.substring(last, match.range.first))
@@ -496,7 +501,11 @@ fun SettingsPane(state: SkeinUiState, vm: SkeinViewModel, ports: SkeinPorts) {
         if (ports.platform.isMac) SwitchRow(s.showInDock, settings.showInDock, vm::setShowInDock)
         SwitchRow(s.startAtLogin, settings.startAtLogin, vm::setStartAtLogin)
         SwitchRow(s.crashReporting, settings.crashReporting, vm::setCrashReports)
-        SwitchRow(s.saveHistory, settings.saveHistory, vm::setSaveHistory, hint = s.saveHistoryHint)
+        if (state.historyAvailable) {
+            SwitchRow(s.saveHistory, settings.saveHistory, vm::setSaveHistory, hint = s.saveHistoryHint)
+        } else {
+            SwitchRow(s.saveHistory, false, {}, hint = s.comingSoon, enabled = false)
+        }
         HorizontalDivider()
         LabeledRow(s.linkedDevices) { OutlinedButton(onClick = { vm.openPane(MainPane.LinkedDevices) }) { Text(s.open) } }
         LabeledRow(s.backups) { OutlinedButton(onClick = { vm.openPane(MainPane.Backups) }) { Text(s.open) } }
@@ -522,13 +531,13 @@ private fun LabeledRow(label: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit, hint: String? = null) {
+private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit, hint: String? = null, enabled: Boolean = true) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.bodyLarge)
             if (hint != null) Text(hint, style = MaterialTheme.typography.bodySmall, color = SkeinColors.muted)
         }
-        Switch(checked = checked, onCheckedChange = onChange)
+        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
     }
 }
 
