@@ -78,6 +78,10 @@ data class SkeinUiState(
     val peerDetail: PeerDetailState? = null,
     val draft: String = "",
     val mentionSuggestions: List<String> = emptyList(),
+    /** False while location channels are only an in-memory stand-in (nothing is transmitted). */
+    val locationChannelsAvailable: Boolean = true,
+    /** False while message history is only an in-memory stand-in (nothing is saved). */
+    val historyAvailable: Boolean = true,
 ) {
     val strings: UiStrings get() = stringsFor(settings.language)
     val totalUnread: Int get() = mesh.unread + locationChannels.sumOf { it.unread } + privateChats.sumOf { it.unread }
@@ -93,7 +97,11 @@ private data class LocalState(
     val history: List<ChatMessage> = emptyList(),
     /** Bumped when something outside the flows (fingerprints, sessions) may have changed. */
     val refresh: Int = 0,
-)
+    /** The window is shown and focused; only then do messages in the open conversation count as read. */
+    val windowActive: Boolean = true,
+) {
+    val viewingConversation: Boolean get() = windowActive && pane == MainPane.Conversation
+}
 
 /**
  * State holder for the desktop messenger. Pure Kotlin (no Compose): all logic here is unit tested.
@@ -136,7 +144,10 @@ class SkeinViewModel(
         buildState(peers, live, favorites, verified, channels, l)
     }.stateIn(scope, SharingStarted.Eagerly, SkeinUiState())
 
-    /** IDs already written to [HistoryPort]. */
+    /** Guards [savedIds] and every [HistoryPort] write, so turning history off cannot race a save. */
+    private val historyLock = Any()
+
+    /** IDs already written to [HistoryPort]. Guarded by [historyLock]. */
     private val savedIds = mutableSetOf<String>().apply { addAll(local.value.history.map { it.id }) }
 
     init {
@@ -144,11 +155,11 @@ class SkeinViewModel(
             liveMessages.collect { all ->
                 val l = local.value
                 // Messages arriving in the open conversation count as read.
-                val visible = all.filter { it.conversation == l.selected && l.pane == MainPane.Conversation }
+                val visible = all.filter { it.conversation == l.selected && l.viewingConversation }
                 if (visible.any { it.id !in l.readIds }) {
                     local.update { s -> s.copy(readIds = s.readIds + visible.map { it.id }) }
                 }
-                if (local.value.settings.saveHistory) saveNew(all)
+                saveNewIfEnabled(all)
             }
         }
     }
@@ -169,6 +180,13 @@ class SkeinViewModel(
     fun closePane() = selectConversation(local.value.selected)
 
     fun refresh() = local.update { it.copy(refresh = it.refresh + 1) }
+
+    /** Window shown and focused (true) or hidden / in the background (false). */
+    fun setWindowActive(active: Boolean) {
+        if (local.value.windowActive == active) return
+        local.update { it.copy(windowActive = active) }
+        if (active && local.value.pane == MainPane.Conversation) selectConversation(local.value.selected)
+    }
 
     // ---- composer ---------------------------------------------------------------------------
 
@@ -211,6 +229,7 @@ class SkeinViewModel(
     // ---- location channels ------------------------------------------------------------------
 
     fun joinLocation(input: String): Boolean {
+        if (!ports.locations.isAvailable) return false
         val geohash = normalizeGeohash(input) ?: return false
         ports.locations.join(geohash)
         selectConversation(ConversationId.Location(geohash))
@@ -255,17 +274,24 @@ class SkeinViewModel(
 
     fun setSaveHistory(enabled: Boolean) {
         if (!enabled) {
-            ports.history.clear()
-            savedIds.clear()
+            synchronized(historyLock) {
+                // Switch off first: a save already waiting on the lock re-checks and does nothing.
+                updateSettings { it.copy(saveHistory = false) }
+                ports.history.clear()
+                savedIds.clear()
+            }
             local.update { it.copy(history = emptyList()) }
         } else {
+            synchronized(historyLock) {
+                updateSettings { it.copy(saveHistory = true) }
+            }
             // What is already on screen is saved too.
-            saveNew(allMessages())
+            saveNewIfEnabled(allMessages())
         }
-        updateSettings { it.copy(saveHistory = enabled) }
     }
 
-    private fun saveNew(messages: List<ChatMessage>) {
+    private fun saveNewIfEnabled(messages: List<ChatMessage>) = synchronized(historyLock) {
+        if (!local.value.settings.saveHistory) return@synchronized
         messages.filter { savedIds.add(it.id) }.forEach { ports.history.append(it) }
     }
 
@@ -298,12 +324,12 @@ class SkeinViewModel(
         val peerById = peers.associateBy { it.peerID }
 
         fun unread(id: ConversationId): Int {
-            if (id == l.selected && l.pane == MainPane.Conversation) return 0
+            if (id == l.selected && l.viewingConversation) return 0
             return byConversation[id].orEmpty().count { !it.isMine && it.id !in l.readIds }
         }
 
         fun unreadMention(id: ConversationId): Boolean {
-            if (id == l.selected && l.pane == MainPane.Conversation) return false
+            if (id == l.selected && l.viewingConversation) return false
             return byConversation[id].orEmpty().any {
                 !it.isMine && it.id !in l.readIds && mentionsNickname(it.text, l.nickname)
             }
@@ -322,8 +348,8 @@ class SkeinViewModel(
             mentionsMe = unreadMention(id),
         )
 
+        // Joined channels only: a left channel disappears even if its messages are still stored.
         val locationIds = (channels.map { it.geohash } +
-            byConversation.keys.filterIsInstance<ConversationId.Location>().map { it.geohash } +
             listOfNotNull((l.selected as? ConversationId.Location)?.geohash)).distinct()
         val locationSummaries = locationIds.map { summary(ConversationId.Location(it), "#$it") }
 
@@ -389,6 +415,8 @@ class SkeinViewModel(
             peerDetail = detail,
             draft = l.draft,
             mentionSuggestions = mentionSuggestions(l.draft, peers.map { it.nickname }),
+            locationChannelsAvailable = ports.locations.isAvailable,
+            historyAvailable = ports.history.isAvailable,
         )
     }
 }

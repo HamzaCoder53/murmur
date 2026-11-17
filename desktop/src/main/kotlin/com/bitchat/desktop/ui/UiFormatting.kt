@@ -18,11 +18,13 @@ fun formatFingerprint(fingerprint: String): String {
     return sb.toString()
 }
 
-/** "@name" mentions that refer to a known nickname (same rule as the phone's MessageManager). */
+/**
+ * "@name" mentions that refer to a known nickname, matched ignoring case like [mentionsNickname].
+ * Returns the known nickname's own spelling.
+ */
 fun parseMentions(text: String, knownNicknames: Set<String>): List<String> =
     MENTION_REGEX.findAll(text)
-        .map { it.groupValues[1] }
-        .filter { it in knownNicknames }
+        .mapNotNull { m -> knownNicknames.firstOrNull { it.equals(m.groupValues[1], ignoreCase = true) } }
         .distinct()
         .toList()
 
@@ -88,4 +90,5 @@ fun validNickname(input: String): String? {
 
 const val MAX_NICKNAME_CHARS = 32
 private const val GEOHASH_ALPHABET = "0123456789bcdefghjkmnpqrstuvwxyz"
-private val MENTION_REGEX = "@([\\p{L}\\p{N}_]+)".toRegex()
+/** An "@" not glued to a preceding word ("user@alice" is not a mention). */
+private val MENTION_REGEX = "(?<![\\p{L}\\p{N}_])@([\\p{L}\\p{N}_]+)".toRegex()

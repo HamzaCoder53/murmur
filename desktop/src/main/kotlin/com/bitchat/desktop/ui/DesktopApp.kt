@@ -18,10 +18,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.bitchat.android.favorites.FavoritesPersistenceService
+import com.bitchat.android.identity.SecureIdentityStateManager
 import com.bitchat.desktop.ble.BleMeshTransport
 import com.bitchat.desktop.core.DesktopIdentity
 import com.bitchat.desktop.core.DesktopMeshNode
@@ -75,7 +78,15 @@ fun runDesktopApp(
     val ports = customizePorts(
         SkeinPorts(
             messaging = MeshMessagingAdapter(node, appScope),
-            locations = InMemoryLocationChannelsPort(myNickname = { identity.nickname }),
+            contacts = SharedContactsPort(
+                favoritesStore = FavoritesPersistenceService.shared,
+                identityState = SecureIdentityStateManager(ctx),
+                noiseKeyFor = node::peerNoisePublicKey,
+            ),
+            // Stand-ins until the Nostr and DesktopStore builders plug in real ports: flagged
+            // unavailable so the UI does not present them as working.
+            history = InMemoryHistoryPort(isAvailable = false),
+            locations = InMemoryLocationChannelsPort(myNickname = { identity.nickname }, isAvailable = false),
             settings = settingsPort,
             platform = DesktopPlatformToggles(platform),
             appInfo = AppInfo(version = System.getProperty("skein.version") ?: AppInfo().version),
@@ -95,6 +106,8 @@ fun runDesktopApp(
             appScope.cancel()
             exitApplication()
         }
+        val uiState by viewModel.state.collectAsState()
+        LaunchedEffect(windowVisible) { if (!windowVisible) viewModel.setWindowActive(false) }
         LaunchedEffect(platform.tray) {
             platform.tray.show(
                 tooltip = "Skein",
@@ -102,6 +115,8 @@ fun runDesktopApp(
                 onQuit = shutdown,
             )
         }
+        // Declared after the tray is shown so the first count reaches a live icon.
+        LaunchedEffect(uiState.totalUnread) { platform.tray.setUnreadCount(uiState.totalUnread) }
         Window(
             onCloseRequest = {
                 if (platform.tray.isSupported) windowVisible = false else shutdown()
@@ -110,6 +125,8 @@ fun runDesktopApp(
             title = "Skein",
             state = rememberWindowState(width = 1080.dp, height = 720.dp),
         ) {
+            val focused = LocalWindowInfo.current.isWindowFocused
+            LaunchedEffect(windowVisible, focused) { viewModel.setWindowActive(windowVisible && focused) }
             SkeinDesktopRoot(viewModel, ports)
         }
     }
