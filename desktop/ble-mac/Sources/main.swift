@@ -30,6 +30,12 @@ final class BleHelper: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate,
     private var peripheralLinksById: [String: CBCentral] = [:]
     private var peripheralIdByCentral: [UUID: String] = [:]
 
+    // Backpressure: frames CoreBluetooth could not take yet, retried when it says it is ready.
+    // Bounded so a stalled link cannot grow memory without limit.
+    private let maxQueuedFrames = 256
+    private var pendingWrites: [String: [Data]] = [:]   // central role, per link
+    private var pendingNotifies: [(linkId: String, data: Data)] = []   // peripheral role
+
     func start() {
         bleQueue.async { [weak self] in
             guard let self = self, !self.isStarted else { return }
@@ -53,22 +59,71 @@ final class BleHelper: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate,
             self.peripheral?.removeAllServices()
             self.peripheralLinksById.removeAll()
             self.peripheralIdByCentral.removeAll()
+            self.pendingWrites.removeAll()
+            self.pendingNotifies.removeAll()
         }
     }
 
     func send(linkId: String, data: Data) {
         bleQueue.async { [weak self] in
             guard let self = self else { return }
-            if let entry = self.centralLinksById[linkId], let char = entry.char {
-                let writeType: CBCharacteristicWriteType =
-                    char.properties.contains(.writeWithoutResponse) ? .withoutResponse : .withResponse
-                entry.peripheral.writeValue(data, for: char, type: writeType)
+            if self.centralLinksById[linkId] != nil {
+                self.pendingWrites[linkId, default: []].append(data)
+                if self.pendingWrites[linkId]!.count > self.maxQueuedFrames {
+                    self.pendingWrites[linkId]!.removeFirst()
+                    emit(["ev": "error", "message": "BLE write queue full; dropped oldest frame"])
+                }
+                self.drainWrites(linkId: linkId)
                 return
             }
-            if let subscriber = self.peripheralLinksById[linkId],
-               let char = self.gattChar {
-                self.peripheral?.updateValue(data, for: char, onSubscribedCentrals: [subscriber])
+            if self.peripheralLinksById[linkId] != nil {
+                self.pendingNotifies.append((linkId, data))
+                if self.pendingNotifies.count > self.maxQueuedFrames {
+                    self.pendingNotifies.removeFirst()
+                    emit(["ev": "error", "message": "BLE notify queue full; dropped oldest frame"])
+                }
+                self.drainNotifies()
             }
+        }
+    }
+
+    /// Central role. Uses write-without-response when the frame fits the negotiated length and
+    /// CoreBluetooth has room; otherwise write-with-response (which CoreBluetooth splits into a
+    /// long write up to 512 bytes). Stops when the queue is full and resumes on readiness.
+    private func drainWrites(linkId: String) {
+        guard let entry = centralLinksById[linkId], let char = entry.char else { return }
+        let p = entry.peripheral
+        while let data = pendingWrites[linkId]?.first {
+            let noRspMax = p.maximumWriteValueLength(for: .withoutResponse)
+            let rspMax = p.maximumWriteValueLength(for: .withResponse)
+            if char.properties.contains(.writeWithoutResponse) && data.count <= noRspMax {
+                guard p.canSendWriteWithoutResponse else { return } // resumes in peripheralIsReady
+                p.writeValue(data, for: char, type: .withoutResponse)
+            } else if char.properties.contains(.write) && data.count <= rspMax {
+                p.writeValue(data, for: char, type: .withResponse)
+            } else {
+                emit(["ev": "error", "message": "BLE frame of \(data.count) bytes exceeds link limit; dropped"])
+            }
+            pendingWrites[linkId]?.removeFirst()
+        }
+    }
+
+    /// Peripheral role. updateValue returns false when the transmit queue is full; the frame
+    /// stays queued and is retried from peripheralManagerIsReady(toUpdateSubscribers:).
+    private func drainNotifies() {
+        guard let char = gattChar, let pm = peripheral else { return }
+        while let next = pendingNotifies.first {
+            guard let subscriber = peripheralLinksById[next.linkId] else {
+                pendingNotifies.removeFirst()
+                continue
+            }
+            if next.data.count > subscriber.maximumUpdateValueLength {
+                emit(["ev": "error", "message": "BLE frame of \(next.data.count) bytes exceeds notify limit; dropped"])
+                pendingNotifies.removeFirst()
+                continue
+            }
+            guard pm.updateValue(next.data, for: char, onSubscribedCentrals: [subscriber]) else { return }
+            pendingNotifies.removeFirst()
         }
     }
 
@@ -106,16 +161,16 @@ final class BleHelper: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate,
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        guard let linkId = centralIdByPeripheral[peripheral.identifier] else { return }
-        let mtu = peripheral.maximumWriteValueLength(for: .withoutResponse)
-        emit(["ev": "linkUp", "link": linkId, "mtu": mtu, "role": "central"])
+        // linkUp is reported once the characteristic is found, so no send is lost before then.
+        guard centralIdByPeripheral[peripheral.identifier] != nil else { return }
         peripheral.discoverServices([serviceUUID])
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         guard let linkId = centralIdByPeripheral.removeValue(forKey: peripheral.identifier) else { return }
-        centralLinksById.removeValue(forKey: linkId)
-        emit(["ev": "linkDown", "link": linkId])
+        let wasUp = centralLinksById.removeValue(forKey: linkId)?.char != nil
+        pendingWrites.removeValue(forKey: linkId)
+        if wasUp { emit(["ev": "linkDown", "link": linkId]) }
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
@@ -137,11 +192,17 @@ final class BleHelper: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate,
         guard error == nil, let chars = service.characteristics,
               let linkId = centralIdByPeripheral[peripheral.identifier] else { return }
         for ch in chars where ch.uuid == characteristicUUID {
+            let alreadyUp = centralLinksById[linkId]?.char != nil
             centralLinksById[linkId] = (peripheral, ch)
             peripheral.setNotifyValue(true, for: ch)
             let mtu = peripheral.maximumWriteValueLength(for: .withoutResponse)
-            emit(["ev": "linkUpdated", "link": linkId, "mtu": mtu])
+            emit(["ev": alreadyUp ? "linkUpdated" : "linkUp", "link": linkId, "mtu": mtu, "role": "central"])
         }
+    }
+
+    func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
+        guard let linkId = centralIdByPeripheral[peripheral.identifier] else { return }
+        drainWrites(linkId: linkId)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
@@ -181,7 +242,12 @@ final class BleHelper: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate,
     func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didUnsubscribeFrom characteristic: CBCharacteristic) {
         guard let linkId = peripheralIdByCentral.removeValue(forKey: central.identifier) else { return }
         peripheralLinksById.removeValue(forKey: linkId)
+        pendingNotifies.removeAll { $0.linkId == linkId }
         emit(["ev": "linkDown", "link": linkId])
+    }
+
+    func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) {
+        drainNotifies()
     }
 
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {

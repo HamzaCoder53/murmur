@@ -1,9 +1,11 @@
 package com.bitchat.desktop.sentry
 
 /**
- * Scrubs all personally identifying and mesh-sensitive data (peer IDs, hex/Base64 keys,
- * filesystem paths, nicknames, geohashes/coordinates, and message text) before any crash
- * report or breadcrumb is sent to Sentry.
+ * Best-effort, pattern-based scrubbing for breadcrumbs and context values: long hex runs (keys,
+ * full peer IDs), npub/nsec, home-directory paths, IPv4 addresses and coordinates, plus whole
+ * values under sensitive context keys. Patterns cannot recognise free text such as nicknames or
+ * message content, so callers must never put those in breadcrumbs, and [SentryCrashReporter]
+ * never sends exception messages at all.
  */
 object SentryScrubber {
     private val hexKeyOrPeerRegex = Regex("""\b[0-9a-fA-F]{16,128}\b""")

@@ -17,14 +17,16 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Opt-in Sentry crash reporter using Sentry's standard envelope HTTP API over OkHttp.
- * Disabled by default until the user opts in AND a valid DSN is provided via
- * `-Dskein.sentryDsn=...` or `SKEIN_SENTRY_DSN`.
+ * Disabled by default until the user opts in AND a valid https DSN is available: baked into
+ * release builds as the `skein-sentry-dsn.txt` resource (from the SKEIN_SENTRY_DSN secret), or
+ * overridden with `-Dskein.sentryDsn=...` / `SKEIN_SENTRY_DSN` for development.
  */
 class SentryCrashReporter(
     private val contextProvider: () -> Context,
     private val dsnProvider: () -> String? = {
         System.getProperty("skein.sentryDsn")?.takeIf { it.isNotBlank() }
             ?: System.getenv("SKEIN_SENTRY_DSN")?.takeIf { it.isNotBlank() }
+            ?: SentryCrashReporter::class.java.getResource("/skein-sentry-dsn.txt")?.readText()?.takeIf { it.isNotBlank() }
     },
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
@@ -33,7 +35,7 @@ class SentryCrashReporter(
         .build(),
 ) : CrashReporter {
 
-    internal data class ParsedDsn(val envelopeUrl: String, val authHeader: String)
+    internal data class ParsedDsn(val dsn: String, val envelopeUrl: String, val authHeader: String)
 
     private val breadcrumbs = ConcurrentLinkedDeque<JSONObject>()
     private val executor = Executors.newSingleThreadExecutor { r ->
@@ -47,10 +49,13 @@ class SentryCrashReporter(
     @Volatile
     private var parsedDsn: ParsedDsn? = null
 
+    override val isAvailable: Boolean
+        get() = parsedDsn != null
+
     override val isEnabled: Boolean
         get() = parsedDsn != null && readOptIn()
 
-    fun hasOptInDecision(): Boolean =
+    override fun hasOptInDecision(): Boolean =
         prefs().contains(KEY_OPT_IN)
 
     override fun setEnabled(enabled: Boolean) {
@@ -113,7 +118,7 @@ class SentryCrashReporter(
         val header = JSONObject()
             .put("event_id", eventId)
             .put("sent_at", Instant.now().toString())
-        if (dsn != null) header.put("dsn", dsn.envelopeUrl)
+        if (dsn != null) header.put("dsn", dsn.dsn)
 
         val frames = JSONArray()
         for (el in throwable.stackTrace.take(MAX_FRAMES)) {
@@ -126,7 +131,9 @@ class SentryCrashReporter(
         }
         val excValue = JSONObject()
             .put("type", throwable.javaClass.name)
-            .put("value", SentryScrubber.scrubText(throwable.message.orEmpty()))
+            // Exception messages can hold nicknames, message text or IDs that no regex reliably
+            // catches, so only the exception type and stack frames are ever sent.
+            .put("value", "<message omitted>")
             .put("stacktrace", JSONObject().put("frames", frames))
 
         val event = JSONObject()
@@ -146,15 +153,18 @@ class SentryCrashReporter(
     private fun prefs() = contextProvider().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private fun readOptIn(): Boolean = prefs().getBoolean(KEY_OPT_IN, false)
 
-    private fun parseDsn(raw: String): ParsedDsn? = try {
-        val uri = URI(raw.trim())
+    internal fun parseDsn(raw: String): ParsedDsn? = try {
+        val trimmed = raw.trim()
+        val uri = URI(trimmed)
+        // Crash reports must never travel in plaintext.
+        if (!uri.scheme.equals("https", ignoreCase = true) || uri.host.isNullOrEmpty()) return null
         val key = uri.userInfo?.substringBefore(':') ?: return null
         val projectId = uri.path.trim('/').substringAfterLast('/')
         if (projectId.isEmpty()) return null
         val portPart = if (uri.port > 0) ":${uri.port}" else ""
         val url = "${uri.scheme}://${uri.host}$portPart/api/$projectId/envelope/"
         val auth = "Sentry sentry_version=7, sentry_key=$key, sentry_client=skein-desktop/1.0"
-        ParsedDsn(url, auth)
+        ParsedDsn(trimmed, url, auth)
     } catch (_: Exception) {
         null
     }

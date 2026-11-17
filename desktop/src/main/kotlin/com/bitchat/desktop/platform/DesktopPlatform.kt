@@ -68,7 +68,7 @@ class DesktopPlatform(
             val crashReporter = com.bitchat.desktop.sentry.SentryCrashReporter(
                 contextProvider = { android.content.Context(paths.dataDir) },
             ).apply {
-                init(release = System.getProperty("skein.version") ?: "1.0.0")
+                init(release = System.getProperty("skein.version") ?: "unknown")
             }
             return DesktopPlatform(
                 paths = paths,
@@ -229,7 +229,11 @@ interface AutostartController {
 
 /** Opt-in crash reporting. Implementations must scrub peer IDs, keys, paths and message text. */
 interface CrashReporter {
+    /** False when this build has no crash-report endpoint; the opt-in switch is then disabled. */
+    val isAvailable: Boolean get() = true
     val isEnabled: Boolean
+    /** Whether the user has answered the opt-in question (so it is asked once, on first launch). */
+    fun hasOptInDecision(): Boolean = true
     fun setEnabled(enabled: Boolean)
     fun init(release: String, environment: String = "production")
     fun addBreadcrumb(category: String, message: String)

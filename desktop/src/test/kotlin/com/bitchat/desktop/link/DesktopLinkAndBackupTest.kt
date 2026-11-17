@@ -11,9 +11,11 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.net.InetAddress
 import java.util.Date
 
 class DesktopLinkAndBackupTest {
@@ -24,7 +26,7 @@ class DesktopLinkAndBackupTest {
 
     @Test
     fun `TcpLinkTransport exchanges length-prefixed frames over loopback`() = runBlocking {
-        TcpLinkTransport.listen(0).use { server ->
+        TcpLinkTransport.listen(InetAddress.getLoopbackAddress(), 0).use { server ->
             val client = TcpLinkTransport.connect("127.0.0.1", server.localPort)
             val accepted = TcpLinkTransport(server.accept())
             client.use { c ->
@@ -32,6 +34,27 @@ class DesktopLinkAndBackupTest {
                     val payload = "synthetic-link-frame".toByteArray()
                     assertTrue(c.send(payload))
                     assertArrayEquals(payload, s.receive())
+
+                    // Before the link handshake, frames above the pre-auth cap are refused.
+                    assertTrue(c.send(ByteArray(TcpLinkTransport.PRE_AUTH_MAX_FRAME_BYTES + 1)))
+                    assertNull(s.receive())
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `TcpLinkTransport accepts large frames only after authentication`() = runBlocking {
+        TcpLinkTransport.listen(InetAddress.getLoopbackAddress(), 0).use { server ->
+            assertTrue(server.inetAddress.isLoopbackAddress)
+            val client = TcpLinkTransport.connect("127.0.0.1", server.localPort)
+            val accepted = TcpLinkTransport(server.accept())
+            client.use { c ->
+                accepted.use { s ->
+                    s.markAuthenticated()
+                    val big = ByteArray(64 * 1024) { it.toByte() }
+                    assertTrue(c.send(big))
+                    assertArrayEquals(big, s.receive())
                 }
             }
         }

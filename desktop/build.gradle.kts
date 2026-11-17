@@ -221,6 +221,33 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
 }
 
+// Release builds bake the Sentry DSN (Gradle property skein.sentryDsn, or env SKEIN_SENTRY_DSN
+// from the CI secret of that name) into a classpath resource so an installed app can report
+// crashes; a build without it ships no DSN and the opt-in switch stays disabled. The DSN is a
+// public client key, not a credential.
+val skeinVersion = providers.gradleProperty("skeinDesktopVersion").getOrElse("1.0.0")
+val sentryDsnProvider = providers.gradleProperty("skein.sentryDsn")
+    .orElse(providers.environmentVariable("SKEIN_SENTRY_DSN"))
+val generateDesktopBuildResources = tasks.register("generateDesktopBuildResources") {
+    val outDir = layout.buildDirectory.dir("generated/skein-resources")
+    val dsn = sentryDsnProvider.orElse("")
+    inputs.property("sentryDsn", dsn)
+    outputs.dir(outDir)
+    doLast {
+        val dir = outDir.get().asFile
+        dir.deleteRecursively()
+        dir.mkdirs()
+        val value = dsn.get().trim()
+        if (value.isNotEmpty()) {
+            check(value.startsWith("https://")) { "The Sentry DSN must be an https:// DSN" }
+            dir.resolve("skein-sentry-dsn.txt").writeText(value)
+        }
+    }
+}
+sourceSets.main {
+    resources.srcDir(generateDesktopBuildResources)
+}
+
 tasks.withType<Test>().configureEach {
     // Never touch the real per-user app-data directory from tests.
     systemProperty("skein.dataDir", layout.buildDirectory.dir("test-data").get().asFile.absolutePath)
@@ -229,10 +256,14 @@ tasks.withType<Test>().configureEach {
 compose.desktop {
     application {
         mainClass = "com.bitchat.desktop.MainKt"
+        jvmArgs += listOf("-Dskein.version=$skeinVersion")
         nativeDistributions {
+            // The jlinked runtime holds only these modules (from :desktop:suggestRuntimeModules
+            // plus jdk.crypto.ec for TLS to Sentry); CI launches the packaged app with --smoke.
+            modules("java.instrument", "java.naming", "java.sql", "jdk.unsupported", "jdk.crypto.ec")
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi)
             packageName = "Skein"
-            packageVersion = providers.gradleProperty("skeinDesktopVersion").getOrElse("1.0.0")
+            packageVersion = skeinVersion
             appResourcesRootDir.set(layout.buildDirectory.dir("app-resources"))
             macOS {
                 bundleID = "xfuturehb.murmur.desktop"

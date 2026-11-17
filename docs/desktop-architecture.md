@@ -70,7 +70,7 @@ an MCP SDK, etc.). Those are developer-tooling configurations only; none of it i
 | Excluded | Reason | Plan |
 |---|---|---|
 | `mesh/Bluetooth*`, `PowerManager`, `RadioPower`, `BluetoothMeshService`, `UnifiedMeshService` | Android BLE stack (GATT, advertiser, scanner), battery/lifecycle receivers | Replaced by `BleTransport` helper processes (stage 2) feeding `DesktopMeshNode.receive` |
-| `services/AppStateStore`, `ConversationRepository`, `ConversationStorageCipher`, `MessageHistory` | Conversation persistence is `android.database.sqlite` + Android Keystore; shimming SQLite is a large framework | Desktop variants (same FQN) keep the API the core calls, in memory only. UI-parity stage: either JDBC SQLite (`xerial sqlite-jdbc`) behind a small `SQLiteDatabase`/`Cursor` shim plus a Keychain/DPAPI-keyed cipher, or extract a repository interface in app/ |
+| `services/AppStateStore`, `ConversationRepository`, `ConversationStorageCipher`, `MessageHistory` | Conversation persistence is `android.database.sqlite` + Android Keystore; shimming SQLite is a large framework | Desktop variants (same FQN) keep the API the core calls, in memory only. The desktop app itself keeps its conversations in `core.EncryptedConversationStore` (an AES-256-GCM sealed preference file keyed from Keychain/DPAPI, honouring the `MessageHistory` switch). UI-parity stage: either JDBC SQLite (`xerial sqlite-jdbc`) behind a small `SQLiteDatabase`/`Cursor` shim plus a Keychain/DPAPI-keyed cipher, or extract a repository interface in app/ |
 | `nostr/NostrRelayManager`, `NostrClient`, `NostrTransport`, `RelayDirectory`, geohash/notes managers, background runtime | Relay client is wired to `mesh.PowerManager`, the Tor `net.OkHttpProvider`, `RelayDirectory` (Application + assets) and `LiveLocationPrivacyGate`; managers need `Application` | Needs small seams in app/ (inject an OkHttp provider and a power-profile flow) before mirroring; then plain OkHttp websockets on desktop |
 | `linked/LinkTransport`, `AndroidLinkedAppBridge`, `LinkController` | `NsdManager` discovery and Android process/intent glue | Desktop `LinkTransport` over `LocalDiscovery` (mDNS via JmDNS or the native helpers) reusing `LinkCoordinator`/`LinkSession` |
 | `backup/TransferCode`, `TransferNetwork`, `DeviceBackup`, `AndroidBackup`, `SkeinBackupAgent`, `BackupController`, dialogs | NSD, `ConnectivityManager`, Android Backup Service, SAF `Uri`, Compose-Android UI | Desktop file dialogs + `LocalDiscovery` |
@@ -191,8 +191,11 @@ tasks when regenerating:
 4. **Tray / menu bar, autostart, notifications, crash reporting** through the platform interfaces.
 5. **Packaging + CI.** Compose Desktop native distributions: DMG (arm64 and x64 builds) and MSI
    (x64 and arm64), each bundling only its own skiko runtime via `-PskeinTarget=` and BLE helper.
-   Windows CI provides a checksum-verified WiX toolset via `WIX_PATH` (`downloadWix=false`) so
-   packaging never fetches unverified binaries. GitHub Actions matrix on `macos-14` (arm64),
+   Known gap: MSI packaging uses the WiX toolset that the Compose plugin downloads itself; that
+   download is not checksum-pinned by this repository (no `WIX_PATH` / `downloadWix=false` yet).
+   The jlinked runtime declares its modules explicitly and CI launches the packaged app with
+   `--smoke`. Installers are unsigned for now (see docs/desktop-build-plan.md); a `desktop-v*`
+   tag attaches them to a draft GitHub Release that a maintainer publishes. GitHub Actions matrix on `macos-14` (arm64),
    `macos-15-intel` (x64), `windows-latest` (x64) and `windows-11-arm` (arm64) running `:desktop:test`
    and the package tasks, with pinned action SHAs and the same lock/verification policy as the
    Android builds.

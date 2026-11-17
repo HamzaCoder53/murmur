@@ -38,6 +38,7 @@ object NoopAutostartController : AutostartController {
 }
 
 object NoopCrashReporter : CrashReporter {
+    override val isAvailable: Boolean = false
     override val isEnabled: Boolean = false
     override fun setEnabled(enabled: Boolean) = Unit
     override fun init(release: String, environment: String) = Unit
