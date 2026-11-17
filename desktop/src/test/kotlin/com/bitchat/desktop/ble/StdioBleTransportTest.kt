@@ -47,6 +47,27 @@ class StdioBleTransportTest {
     }
 
     @Test
+    fun `broadcast power is sent to the helper and re-applied when it starts`() {
+        val ep = FakeEndpoint()
+        val transport = StdioBleTransport { ep }
+        transport.setPowerLevel("low")
+        transport.start(object : BleTransport.Listener {
+            override fun onLinkUp(link: BleLink) = Unit
+            override fun onLinkDown(linkId: String) = Unit
+            override fun onFrame(linkId: String, frame: ByteArray) = Unit
+        })
+        transport.setPowerLevel("high")
+        val commands = ep.helperIn.bufferedReader(Charsets.UTF_8)
+        assertEquals("start", org.json.JSONObject(commands.readLine()).getString("op"))
+        val first = org.json.JSONObject(commands.readLine())
+        assertEquals("power" to "low", first.getString("op") to first.getString("level"))
+        val second = org.json.JSONObject(commands.readLine())
+        assertEquals("power" to "high", second.getString("op") to second.getString("level"))
+        assertTrue(runCatching { transport.setPowerLevel("max") }.isFailure)
+        transport.stop()
+    }
+
+    @Test
     fun `parses state, linkUp, linkUpdated, frame, and linkDown events`() {
         val ep = FakeEndpoint()
         val transport = StdioBleTransport { ep }

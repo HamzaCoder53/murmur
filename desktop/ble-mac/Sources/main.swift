@@ -36,6 +36,23 @@ final class BleHelper: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate,
     private var pendingWrites: [String: [Data]] = [:]   // central role, per link
     private var pendingNotifies: [(linkId: String, data: Data)] = []   // peripheral role
 
+    // Broadcast power (Settings). CoreBluetooth has no TX-power or advertising-interval API, so,
+    // like the phone's PowerManager, the level sets how weak a peer may be before we connect to
+    // it and how many outgoing (central) links we keep. Guarded by bleQueue.
+    private var rssiThreshold = -85
+    private var maxCentralLinks = 6
+
+    func setPower(_ level: String) {
+        bleQueue.async { [weak self] in
+            guard let self = self else { return }
+            switch level {
+            case "low": self.rssiThreshold = -75; self.maxCentralLinks = 4
+            case "high": self.rssiThreshold = -95; self.maxCentralLinks = 8
+            default: self.rssiThreshold = -85; self.maxCentralLinks = 6
+            }
+        }
+    }
+
     func start() {
         bleQueue.async { [weak self] in
             guard let self = self, !self.isStarted else { return }
@@ -153,6 +170,10 @@ final class BleHelper: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate,
 
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
         if centralIdByPeripheral[peripheral.identifier] != nil { return }
+        // 127 means CoreBluetooth has no RSSI for this advertisement: do not filter on it.
+        let rssi = RSSI.intValue
+        if rssi != 127 && rssi < rssiThreshold { return }
+        if centralLinksById.count >= maxCentralLinks { return }
         let linkId = UUID().uuidString
         centralIdByPeripheral[peripheral.identifier] = linkId
         centralLinksById[linkId] = (peripheral, nil)
@@ -279,6 +300,8 @@ DispatchQueue.global(qos: .userInitiated).async {
         case "stop":
             helper.stop()
             exit(0)
+        case "power":
+            if let level = obj["level"] as? String { helper.setPower(level) }
         case "send":
             if let link = obj["link"] as? String,
                let b64 = obj["b64"] as? String,

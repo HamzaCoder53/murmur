@@ -183,6 +183,11 @@ interface BleTransport {
     /** Writes one already-encoded (and, if needed, fragmented) packet to a link. */
     fun send(linkId: String, frame: ByteArray): Boolean
     fun broadcast(frame: ByteArray, except: String? = null): Int
+    /**
+     * Broadcast power from Settings: "low", "medium" or "high". The helpers map it to an RSSI
+     * floor for new connections and a cap on outgoing links (the OS APIs expose no TX power).
+     */
+    fun setPowerLevel(level: String) = Unit
 
     interface Listener {
         fun onLinkUp(link: BleLink)

@@ -164,8 +164,8 @@ class DesktopPlatformToggles(private val platform: DesktopPlatform) : PlatformTo
     /** Saved in settings and applied at the next launch (see [applyDockPreference]). */
     override fun setShowInDock(visible: Boolean) = Unit
 
-    /** No radio-power API on the desktop BLE helpers yet; the choice is saved for when there is. */
-    override fun setBroadcastPower(power: BroadcastPower) = Unit
+    /** Sent to the BLE helper (RSSI floor and outgoing-link cap; see BleTransport.setPowerLevel). */
+    override fun setBroadcastPower(power: BroadcastPower) = platform.ble.setPowerLevel(power.name.lowercase())
 }
 
 /** Hides the Dock icon on macOS. Must run before AWT starts. */

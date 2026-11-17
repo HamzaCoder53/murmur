@@ -28,6 +28,11 @@ internal static class Program
     private static Radio? _radio;
     private static volatile bool _running;
 
+    // Broadcast power (Settings), as in the phone's PowerManager: how weak a peer may be before we
+    // connect to it, and how many outgoing (central) links we keep.
+    private static volatile int _rssiThreshold = -85;
+    private static volatile int _maxCentralLinks = 6;
+
     private sealed record CentralLink(BluetoothLEDevice Device, GattCharacteristic Characteristic);
 
     public static async Task Main()
@@ -50,6 +55,14 @@ internal static class Program
                     case "stop":
                         Stop();
                         return;
+                    case "power":
+                        switch (node?["level"]?.GetValue<string>())
+                        {
+                            case "low": _rssiThreshold = -75; _maxCentralLinks = 4; break;
+                            case "high": _rssiThreshold = -95; _maxCentralLinks = 8; break;
+                            default: _rssiThreshold = -85; _maxCentralLinks = 6; break;
+                        }
+                        break;
                     case "send":
                         var link = node?["link"]?.GetValue<string>();
                         var b64 = node?["b64"]?.GetValue<string>();
@@ -139,6 +152,7 @@ internal static class Program
     private static async Task OnAdvertisementReceivedAsync(BluetoothLEAdvertisementReceivedEventArgs args)
     {
         if (!_running || CentralIdByAddress.ContainsKey(args.BluetoothAddress)) return;
+        if (args.RawSignalStrengthInDBm < _rssiThreshold || CentralIdByAddress.Count >= _maxCentralLinks) return;
         var linkId = Guid.NewGuid().ToString("N");
         if (!CentralIdByAddress.TryAdd(args.BluetoothAddress, linkId)) return;
 

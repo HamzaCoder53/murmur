@@ -95,6 +95,17 @@ class StdioBleTransport(
             readLoop(ep, listener)
         }
         writeCommand(JSONObject().put("op", "start"))
+        // A restarted helper starts at its default: re-apply the chosen level.
+        writeCommand(JSONObject().put("op", "power").put("level", powerLevel))
+    }
+
+    @Volatile
+    private var powerLevel: String = "medium"
+
+    override fun setPowerLevel(level: String) {
+        require(level in POWER_LEVELS) { "Unknown BLE power level" }
+        powerLevel = level
+        if (running.get()) writeCommand(JSONObject().put("op", "power").put("level", level))
     }
 
     override fun stop() {
@@ -256,6 +267,7 @@ class StdioBleTransport(
 
     private companion object {
         const val MAX_BACKOFF_MS = 30_000L
+        val POWER_LEVELS = setOf("low", "medium", "high")
     }
 
     private fun writeCommand(obj: JSONObject): Boolean = synchronized(writeLock) {

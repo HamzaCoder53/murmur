@@ -100,6 +100,7 @@ fun runDesktopApp(
     val settingsPort = PrefsSettingsPort(ctx)
     val initialSettings = settingsPort.load()
     applyDockPreference(initialSettings)
+    platform.ble.setPowerLevel(initialSettings.broadcastPower.name.lowercase())
 
     // Encrypted on-disk history and contacts, keyed from the OS key store (Keychain / DPAPI).
     val keyFor: (String) -> ByteArray = platform.keyStore::getOrCreateKey
