@@ -72,7 +72,9 @@ class LoopbackMeshTest {
 
     @Test
     fun `late joiner receives earlier public message via gossip sync`() = runBlocking {
+        awaitPeer(bob, alice.peerID)
         alice.sendPublic("synthetic earlier message")
+        awaitMessage(bob.publicMessages) { it.content == "synthetic earlier message" }
 
         val charlieId = DesktopIdentity.loadOrCreate(devices.context("charlie")).apply { nickname = "charlie" }
         val (charlie, charlieTransport) = DesktopMeshNode.overLoopback(charlieId, hub)

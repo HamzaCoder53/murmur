@@ -72,6 +72,30 @@ class MeshMessagingAdapter(
         if (!node.hasEstablishedSession(peerID)) markHandshaking(peerID)
     }
 
+    override fun sendFile(peerID: String?, file: java.io.File) {
+        if (!file.isFile || file.length() > 8L * 1024 * 1024) return
+        val bytes = runCatching { file.readBytes() }.getOrNull() ?: return
+        val mime = when (file.extension.lowercase()) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "m4a", "mp4" -> "audio/mp4"
+            "ogg", "opus" -> "audio/ogg"
+            "wav" -> "audio/wav"
+            "pdf" -> "application/pdf"
+            else -> "application/octet-stream"
+        }
+        node.sendFile(
+            peerID,
+            com.bitchat.android.model.BitchatFilePacket(
+                fileName = file.name,
+                fileSize = bytes.size.toLong(),
+                mimeType = mime,
+                content = bytes,
+            ),
+        )
+    }
+
     override fun startSession(peerID: String) {
         if (node.hasEstablishedSession(peerID)) return
         markHandshaking(peerID)

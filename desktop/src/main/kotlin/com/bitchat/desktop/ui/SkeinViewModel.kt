@@ -215,6 +215,15 @@ class SkeinViewModel(
         return true
     }
 
+    fun sendFile(file: java.io.File) {
+        val target = when (val s = local.value.selected) {
+            ConversationId.Mesh -> null
+            is ConversationId.Private -> s.peerID
+            is ConversationId.Location -> return
+        }
+        messaging.sendFile(target, file)
+    }
+
     // ---- people -----------------------------------------------------------------------------
 
     fun toggleFavorite(peerID: String) {

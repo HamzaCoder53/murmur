@@ -63,6 +63,7 @@ class DesktopIdentityTest {
     @Test
     fun `identity keys are stored only in encrypted preference files`() {
         val identity = DesktopIdentity.loadOrCreate(devices.context("alice"))
+        com.bitchat.desktop.shim.FileSharedPreferences.flushPendingWrites()
         val staticPub = identity.encryptionService.getStaticPublicKey()!!
         val signingPub = identity.encryptionService.getSigningPublicKey()!!
         val prefsDir = File(devices.root, "alice/shared_prefs")

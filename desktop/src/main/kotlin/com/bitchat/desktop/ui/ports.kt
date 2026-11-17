@@ -53,6 +53,7 @@ interface MessagingPort {
     val messages: StateFlow<List<ChatMessage>>
     fun sendPublic(text: String)
     fun sendPrivate(peerID: String, text: String)
+    fun sendFile(peerID: String?, file: java.io.File) = Unit
     fun startSession(peerID: String)
     /** Full Noise static-key fingerprint (64 hex chars) of a peer, if known. */
     fun peerFingerprint(peerID: String): String?

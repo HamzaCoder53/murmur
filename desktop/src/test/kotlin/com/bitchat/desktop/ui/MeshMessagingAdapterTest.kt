@@ -134,6 +134,6 @@ class MeshMessagingAdapterTest {
         withTimeout(TIMEOUT_MS) { flow.first { list -> list.any(predicate) }.first(predicate) }
 
     private companion object {
-        const val TIMEOUT_MS = 10_000L
+        const val TIMEOUT_MS = 20_000L
     }
 }

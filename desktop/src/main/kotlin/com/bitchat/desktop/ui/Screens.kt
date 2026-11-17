@@ -368,6 +368,17 @@ private fun Composer(state: SkeinUiState, vm: SkeinViewModel) {
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (state.selected !is ConversationId.Location) {
+                OutlinedButton(onClick = {
+                    val dialog = java.awt.FileDialog(null as java.awt.Frame?, "Attach file", java.awt.FileDialog.LOAD)
+                    dialog.isVisible = true
+                    val dir = dialog.directory
+                    val name = dialog.file
+                    if (dir != null && name != null) {
+                        vm.sendFile(java.io.File(dir, name))
+                    }
+                }) { Text("+") }
+            }
             OutlinedTextField(
                 state.draft,
                 vm::updateDraft,

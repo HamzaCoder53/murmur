@@ -184,7 +184,7 @@ internal static class Program
 
             var ch = charResult.Characteristics[0];
             CentralLinks[linkId] = new CentralLink(device, ch);
-            device.ConnectionStatusChanged += (d, _) =>
+            device.ConnectionStatusChanged += (d, evArgs) =>
             {
                 if (d.ConnectionStatus == BluetoothConnectionStatus.Disconnected)
                 {
@@ -239,7 +239,7 @@ internal static class Program
         if (charResult.Error != BluetoothError.Success) return;
 
         _localCharacteristic = charResult.Characteristic;
-        _localCharacteristic.SubscribedClientsChanged += (sender, _) =>
+        _localCharacteristic.SubscribedClientsChanged += (sender, evArgs) =>
         {
             var activeSessions = new HashSet<string>();
             foreach (var client in sender.SubscribedClients)
