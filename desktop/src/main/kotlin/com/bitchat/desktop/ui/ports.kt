@@ -93,6 +93,12 @@ interface SettingsPort {
 /** OS integrations behind settings switches (DesktopPlatform). */
 interface PlatformTogglesPort {
     val isMac: Boolean
+    /** False when this install cannot register itself to start at login (e.g. `gradlew run`). */
+    val startAtLoginSupported: Boolean get() = true
+    /** False when this build has no crash-report endpoint. */
+    val crashReportsAvailable: Boolean get() = true
+    /** Whether the user already answered the crash-report opt-in question. */
+    fun crashReportsDecided(): Boolean = true
     fun startAtLogin(): Boolean
     fun setStartAtLogin(enabled: Boolean)
     fun crashReports(): Boolean

@@ -6,6 +6,7 @@ import com.bitchat.android.mesh.MeshCore
 import com.bitchat.android.mesh.MeshDelegate
 import com.bitchat.android.mesh.MeshTransport
 import com.bitchat.android.model.BitchatFilePacket
+import com.bitchat.android.mesh.FragmentManager
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.DeliveryStatus
 import com.bitchat.android.protocol.BitchatPacket
@@ -18,9 +19,21 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+
+/**
+ * Implemented by transports that map peers to physical links. The node binds a peer to the link
+ * it was heard on only after a validated, full-TTL (direct, unrelayed) announce, so a spoofed or
+ * relayed packet header can never redirect traffic for a peer ID.
+ */
+interface DirectLinkBinder {
+    fun bindPeer(linkAddress: String, peerID: String): Boolean
+}
 
 /**
  * One desktop mesh endpoint: the shared [MeshCore] (routing, signatures, Noise, fragmentation,
@@ -48,11 +61,16 @@ class DesktopMeshNode(
 
     /** Every private message, flattened in arrival order (incoming and outgoing). */
     private val _privateMessages = MutableStateFlow<List<BitchatMessage>>(emptyList())
+    /** Every private message, both directions, in arrival order. */
     val privateMessages: StateFlow<List<BitchatMessage>> = _privateMessages.asStateFlow()
 
     /** IDs of private messages known to be read (own messages, or imported as read). */
     private val _readPrivateIDs = MutableStateFlow<Set<String>>(emptySet())
     val readPrivateIDs: StateFlow<Set<String>> = _readPrivateIDs.asStateFlow()
+
+    private val _incomingPrivate = MutableSharedFlow<BitchatMessage>(extraBufferCapacity = 64)
+    /** New private messages received from peers (never our own sends); drives notifications. */
+    val incomingPrivate: SharedFlow<BitchatMessage> = _incomingPrivate.asSharedFlow()
 
     private val _peers = MutableStateFlow<List<String>>(emptyList())
     val peers: StateFlow<List<String>> = _peers.asStateFlow()
@@ -94,8 +112,11 @@ class DesktopMeshNode(
             onAnnounceProcessed = { routed, _ ->
                 // Only a validated full-TTL announce marks a peer as directly connected.
                 DirectLinkAnnouncementPolicy.observationFor(routed, maxTtl)?.let { obs ->
-                    core.setDirectConnection(obs.peerID, true)
-                    core.gossipSyncManager.scheduleInitialSyncToPeer(obs.peerID, 1_000)
+                    val bound = (transport as? DirectLinkBinder)?.bindPeer(obs.relayAddress, obs.peerID) ?: true
+                    if (bound) {
+                        core.setDirectConnection(obs.peerID, true)
+                        core.gossipSyncManager.scheduleInitialSyncToPeer(obs.peerID, 1_000)
+                    }
                 }
             },
             announcementNicknameProvider = { identity.nickname },
@@ -118,7 +139,10 @@ class DesktopMeshNode(
         core.delegate = object : MeshDelegate {
             override fun didReceiveMessage(message: BitchatMessage) {
                 if (message.isPrivate) {
-                    addPrivate(message.senderPeerID ?: message.sender, message, read = false)
+                    val partner = message.senderPeerID ?: message.sender
+                    if (addPrivate(partner, message, read = false) && message.senderPeerID != identity.peerID) {
+                        _incomingPrivate.tryEmit(message)
+                    }
                 } else {
                     addPublic(message)
                 }
@@ -147,6 +171,14 @@ class DesktopMeshNode(
     /** Entry point for transports: one decoded packet received over [linkAddress]. */
     fun receive(packet: BitchatPacket, senderPeerID: String, linkAddress: String) {
         core.processIncoming(packet, senderPeerID, linkAddress, linkAddress)
+    }
+
+    /** For transports that fragment large packets the same way the phone does. */
+    val fragmentManager: FragmentManager get() = core.fragmentManager
+
+    /** A transport lost its last link to [peerID]; it is no longer directly connected. */
+    fun onPeerLinkLost(peerID: String) {
+        core.setDirectConnection(peerID, false)
     }
 
     fun start() {
@@ -258,10 +290,11 @@ class DesktopMeshNode(
         messageSink?.invoke(message, null)
     }
 
-    private fun addPrivate(peerID: String, message: BitchatMessage, read: Boolean) {
+    /** Returns false when a message with the same ID is already stored. */
+    private fun addPrivate(peerID: String, message: BitchatMessage, read: Boolean): Boolean {
         synchronized(lock) {
             val flat = _privateMessages.value
-            if (flat.any { it.id == message.id }) return
+            if (flat.any { it.id == message.id }) return false
             _privateMessages.value = (flat + message).takeLast(MAX_MESSAGES)
             val chats = _privateChats.value.toMutableMap()
             chats[peerID] = ((chats[peerID] ?: emptyList()) + message)
@@ -273,6 +306,7 @@ class DesktopMeshNode(
             }
         }
         messageSink?.invoke(message, peerID)
+        return true
     }
 
     /** Applies a delivery update; a read receipt is never downgraded by a late delivery ack. */
@@ -317,7 +351,10 @@ class DesktopMeshNode(
     companion object {
         private const val MAX_MESSAGES = 1_000
 
-        fun overLoopback(identity: DesktopIdentity, hub: LoopbackHub): Pair<DesktopMeshNode, LoopbackTransport> {
+        fun overLoopback(
+            identity: DesktopIdentity,
+            hub: LoopbackHub,
+        ): Pair<DesktopMeshNode, LoopbackTransport> {
             val transport = hub.endpoint(identity.peerID)
             val node = DesktopMeshNode(identity, transport)
             transport.listener = LoopbackTransport.Listener(node::receive)

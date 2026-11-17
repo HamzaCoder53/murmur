@@ -214,8 +214,11 @@ tasks when regenerating:
 4. **Tray / menu bar, autostart, notifications, crash reporting** through the platform interfaces.
 5. **Packaging + CI.** Compose Desktop native distributions: DMG (arm64 and x64 builds) and MSI
    (x64 and arm64), each bundling only its own skiko runtime via `-PskeinTarget=` and BLE helper.
-   Windows CI provides a checksum-verified WiX toolset via `WIX_PATH` (`downloadWix=false`) so
-   packaging never fetches unverified binaries. GitHub Actions matrix on `macos-14` (arm64),
+   Known gap: MSI packaging uses the WiX toolset that the Compose plugin downloads itself; that
+   download is not checksum-pinned by this repository (no `WIX_PATH` / `downloadWix=false` yet).
+   The jlinked runtime declares its modules explicitly and CI launches the packaged app with
+   `--smoke`. Installers are unsigned for now (see docs/desktop-build-plan.md); a `desktop-v*`
+   tag attaches them to a draft GitHub Release that a maintainer publishes. GitHub Actions matrix on `macos-14` (arm64),
    `macos-15-intel` (x64), `windows-latest` (x64) and `windows-11-arm` (arm64) running `:desktop:test`
    and the package tasks, with pinned action SHAs and the same lock/verification policy as the
    Android builds.

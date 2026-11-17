@@ -62,4 +62,27 @@ class SentryCrashReporterTest {
         assertFalse(envelope.contains("deadbeef01234567"))
         assertTrue(envelope.contains("handshake"))
     }
+
+    @Test
+    fun `envelope names the DSN, omits exception text, and only https DSNs are accepted`() {
+        val ctx = devices.context("sentry2")
+        val dsn = "https://publickey@o0.ingest.sentry.io/12345"
+        val reporter = SentryCrashReporter(contextProvider = { ctx }, dsnProvider = { dsn })
+        reporter.init("1.2.3")
+        assertTrue(reporter.isAvailable)
+        val envelope = reporter.buildEnvelope(IllegalStateException("nickname Bob said: meet at the bridge fe80::1"), emptyMap())
+        val header = org.json.JSONObject(envelope.lineSequence().first())
+        assertEquals(dsn, header.getString("dsn"))
+        assertFalse(envelope.contains("Bob"))
+        assertFalse(envelope.contains("bridge"))
+        assertFalse(envelope.contains("fe80"))
+        assertTrue(envelope.contains("java.lang.IllegalStateException"))
+        assertTrue(envelope.contains("1.2.3"))
+
+        val plain = SentryCrashReporter(contextProvider = { ctx }, dsnProvider = { "http://publickey@sentry.example/1" })
+        plain.init("1.2.3")
+        assertFalse(plain.isAvailable)
+        plain.setEnabled(true)
+        assertFalse(plain.isEnabled)
+    }
 }

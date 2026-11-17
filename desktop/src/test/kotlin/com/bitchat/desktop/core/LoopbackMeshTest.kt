@@ -5,7 +5,10 @@ import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.DeliveryStatus
 import com.bitchat.android.services.ContactIdentityResolver
 import com.bitchat.desktop.TestDevices
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -139,6 +142,20 @@ class LoopbackMeshTest {
         assertTrue(alice.isFavoritePeer(peerID))
         FavoritesPersistenceService.shared.updateFavoriteStatus(noiseKey, "synthetic-fav", false)
         assertFalse(alice.isFavoritePeer(peerID))
+    }
+
+    @Test
+    fun `only received private messages are announced for notifications`() = runBlocking {
+        establishSession()
+        val bobIncoming = async(start = CoroutineStart.UNDISPATCHED) {
+            withTimeout(TIMEOUT_MS) { bob.incomingPrivate.first() }
+        }
+        val aliceIncoming = mutableListOf<BitchatMessage>()
+        val aliceWatch = launch(start = CoroutineStart.UNDISPATCHED) { alice.incomingPrivate.collect { aliceIncoming += it } }
+        alice.sendPrivate("synthetic ping", bob.peerID, "bob")
+        assertEquals("synthetic ping", bobIncoming.await().content)
+        aliceWatch.cancel()
+        assertTrue(aliceIncoming.isEmpty())
     }
 
     private suspend fun establishSession() {

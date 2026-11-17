@@ -5,6 +5,7 @@ import com.bitchat.android.mesh.PeerFingerprintManager
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.DeliveryStatus
 import com.bitchat.desktop.core.DesktopMeshNode
+import com.bitchat.desktop.platform.AutostartController
 import com.bitchat.desktop.platform.DesktopPlatform
 import com.bitchat.desktop.platform.HostOs
 import java.util.Date
@@ -126,11 +127,21 @@ internal fun toDeliveryState(s: DeliveryStatus): DeliveryState = when (s) {
     is DeliveryStatus.Failed -> DeliveryState.FAILED
 }
 
+/** Sets start-at-login and returns what the OS now reports, so the switch never lies. */
+internal fun applyAutostart(controller: AutostartController, enabled: Boolean): Boolean {
+    if (!controller.isSupported) return false
+    controller.setEnabled(enabled)
+    return controller.isEnabled()
+}
+
 /** [PlatformTogglesPort] over [DesktopPlatform]. */
 class DesktopPlatformToggles(private val platform: DesktopPlatform) : PlatformTogglesPort {
     override val isMac: Boolean = HostOs.current() == HostOs.MAC
+    override val startAtLoginSupported: Boolean get() = platform.autostart.isSupported
+    override val crashReportsAvailable: Boolean get() = platform.crashReporter.isAvailable
+    override fun crashReportsDecided(): Boolean = platform.crashReporter.hasOptInDecision()
     override fun startAtLogin(): Boolean = platform.autostart.isEnabled()
-    override fun setStartAtLogin(enabled: Boolean) { platform.autostart.setEnabled(enabled) }
+    override fun setStartAtLogin(enabled: Boolean) { applyAutostart(platform.autostart, enabled) }
     override fun crashReports(): Boolean = platform.crashReporter.isEnabled
     override fun setCrashReports(enabled: Boolean) = platform.crashReporter.setEnabled(enabled)
 
@@ -160,6 +171,7 @@ class PrefsSettingsPort(context: Context) : SettingsPort {
                 ?: d.broadcastPower,
             showInDock = prefs.getBoolean(KEY_DOCK, d.showInDock),
             saveHistory = prefs.getBoolean(KEY_HISTORY, d.saveHistory),
+            firstRunPromptsShown = prefs.getBoolean(KEY_FIRST_RUN, d.firstRunPromptsShown),
         )
     }
 
@@ -169,6 +181,7 @@ class PrefsSettingsPort(context: Context) : SettingsPort {
             .putString(KEY_POWER, settings.broadcastPower.name)
             .putBoolean(KEY_DOCK, settings.showInDock)
             .putBoolean(KEY_HISTORY, settings.saveHistory)
+            .putBoolean(KEY_FIRST_RUN, settings.firstRunPromptsShown)
             .apply()
     }
 
@@ -177,5 +190,6 @@ class PrefsSettingsPort(context: Context) : SettingsPort {
         const val KEY_POWER = "broadcast_power"
         const val KEY_DOCK = "show_in_dock"
         const val KEY_HISTORY = "save_history"
+        const val KEY_FIRST_RUN = "first_run_prompts_shown"
     }
 }

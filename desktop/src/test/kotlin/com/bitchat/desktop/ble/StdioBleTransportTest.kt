@@ -111,5 +111,44 @@ class StdioBleTransportTest {
         assertTrue(crashedLatch.await(2, TimeUnit.SECONDS))
         assertEquals(BleState.HELPER_CRASHED, transport.state)
         assertTrue(errors.any { "137" in it })
+        transport.stop()
+    }
+
+    @Test
+    fun `restarts a crashed helper with backoff and gives up after the limit`() {
+        val endpoints = mutableListOf<FakeEndpoint>()
+        val delays = java.util.Collections.synchronizedList(mutableListOf<Long>())
+        val gaveUp = CountDownLatch(1)
+        val secondReady = CountDownLatch(1)
+        val transport = StdioBleTransport(maxRestarts = 2, sleepMs = { delays += it }) {
+            FakeEndpoint().also { synchronized(endpoints) { endpoints += it } }
+        }
+        transport.start(object : BleTransport.Listener {
+            override fun onLinkUp(link: BleLink) = Unit
+            override fun onLinkDown(linkId: String) = Unit
+            override fun onFrame(linkId: String, frame: ByteArray) = Unit
+            override fun onStateChanged(state: BleState) {
+                if (state == BleState.READY) secondReady.countDown()
+            }
+            override fun onError(message: String) { if ("gave up" in message) gaveUp.countDown() }
+        })
+        fun endpoint(i: Int): FakeEndpoint {
+            val deadline = System.currentTimeMillis() + 5_000
+            while (System.currentTimeMillis() < deadline) {
+                synchronized(endpoints) { if (endpoints.size > i) return endpoints[i] }
+                Thread.sleep(5)
+            }
+            error("helper $i was not started")
+        }
+        endpoint(0).closeStdout()
+        // The restarted helper comes up and reports READY, which resets the restart budget.
+        endpoint(1).emitLine("""{"ev":"state","state":"ready"}""")
+        assertTrue(secondReady.await(2, TimeUnit.SECONDS))
+        endpoint(1).closeStdout()
+        endpoint(2).closeStdout()
+        endpoint(3).closeStdout()
+        assertTrue(gaveUp.await(5, TimeUnit.SECONDS))
+        assertEquals(listOf(1_000L, 1_000L, 2_000L), delays.toList())
+        transport.stop()
     }
 }

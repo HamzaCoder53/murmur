@@ -41,6 +41,51 @@ class BleMeshTransportTest {
         }
     }
 
+    private fun packetFrom(senderBytes: ByteArray, ttl: UByte = 5u) = BitchatPacket(
+        version = 1u,
+        type = MessageType.MESSAGE.value,
+        senderID = senderBytes,
+        recipientID = SpecialRecipients.BROADCAST,
+        timestamp = 1_700_000_000_000u,
+        payload = "synthetic ble hello".toByteArray(),
+        signature = null,
+        ttl = ttl,
+    )
+
+    @Test
+    fun `packet headers never move a peer to another link, only a verified bind does`() {
+        val fakeBle = FakeBleTransport()
+        val unreachable = mutableListOf<String>()
+        val mesh = BleMeshTransport(
+            ble = fakeBle,
+            scope = scope,
+            onPacketReceived = { _, _, _ -> },
+            onPeerUnreachable = { unreachable += it },
+        )
+        mesh.start()
+        val victim = ByteArray(8) { 0x11 }
+        val victimId = victim.joinToString("") { "%02x".format(it) }
+        fakeBle.listener!!.onLinkUp(BleLink("victim-link", rssi = null))
+        fakeBle.listener!!.onLinkUp(BleLink("attacker-link", rssi = null))
+        assertTrue(mesh.bindPeer("victim-link", victimId))
+
+        // A spoofed (or merely relayed) frame claiming the victim's ID arrives on another link.
+        fakeBle.listener!!.onFrame("attacker-link", packetFrom(victim).toBinaryData(padding = false)!!)
+        assertEquals("victim-link", mesh.getDeviceAddressForPeer(victimId))
+        assertTrue(mesh.sendPacketToPeer(victimId, packetFrom(victim)))
+        assertEquals("victim-link", fakeBle.sentFrames.single().first)
+
+        // Binding to a link that is not up is refused.
+        assertFalse(mesh.bindPeer("no-such-link", victimId))
+
+        // Losing the bound link reports the peer unreachable; losing another link does not.
+        fakeBle.listener!!.onLinkDown("attacker-link")
+        assertTrue(unreachable.isEmpty())
+        fakeBle.listener!!.onLinkDown("victim-link")
+        assertEquals(listOf(victimId), unreachable)
+        assertFalse(mesh.sendPacketToPeer(victimId, packetFrom(victim)))
+    }
+
     @Test
     fun `decodes incoming BLE frames, maps peer to link, and routes outbound packets`() {
         val fakeBle = FakeBleTransport()
@@ -51,6 +96,7 @@ class BleMeshTransportTest {
             onPacketReceived = { pkt, peer, link -> received += Triple(pkt, peer, link) },
         )
         mesh.start()
+        fakeBle.listener!!.onLinkUp(BleLink("opaque-link-1", rssi = -50))
 
         val senderBytes = ByteArray(8) { (it + 1).toByte() }
         val expectedPeerId = senderBytes.joinToString("") { "%02x".format(it) }
@@ -69,6 +115,9 @@ class BleMeshTransportTest {
 
         assertEquals(1, received.size)
         assertEquals(expectedPeerId, received[0].second)
+        // Receiving a packet alone does not bind; the node binds after a verified direct announce.
+        assertEquals(null, mesh.getDeviceAddressForPeer(expectedPeerId))
+        assertTrue(mesh.bindPeer("opaque-link-1", expectedPeerId))
         assertEquals("opaque-link-1", mesh.getDeviceAddressForPeer(expectedPeerId))
 
         assertTrue(mesh.sendPacketToPeer(expectedPeerId, inbound))

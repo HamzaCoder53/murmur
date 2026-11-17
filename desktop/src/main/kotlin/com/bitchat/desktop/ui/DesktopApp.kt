@@ -1,7 +1,13 @@
 package com.bitchat.desktop.ui
 
 import android.content.Context
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
@@ -18,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -33,6 +40,7 @@ import com.bitchat.desktop.link.DesktopLinkController
 import com.bitchat.desktop.link.DesktopLinkedAppBridge
 import com.bitchat.desktop.nostr.DesktopNostrRelayClient
 import com.bitchat.desktop.nostr.NostrLocationChannelsPort
+import com.bitchat.desktop.platform.BleState
 import com.bitchat.desktop.platform.DesktopPlatform
 import com.bitchat.desktop.platform.NoopBleTransport
 import com.bitchat.desktop.storage.DesktopContactsStore
@@ -41,6 +49,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -61,6 +71,7 @@ fun runDesktopApp(
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     var bleTransport: BleMeshTransport? = null
     var loopbackTransport: com.bitchat.desktop.core.LoopbackTransport? = null
+    val bleState = MutableStateFlow(platform.ble.state)
     val node: DesktopMeshNode = if (platform.ble !== NoopBleTransport) {
         lateinit var createdNode: DesktopMeshNode
         val bleMesh = BleMeshTransport(
@@ -69,12 +80,18 @@ fun runDesktopApp(
             onPacketReceived = { pkt, senderPeerID, linkId ->
                 createdNode.receive(pkt, senderPeerID, linkId)
             },
+            onStateChanged = { bleState.value = it },
+            onPeerUnreachable = { peer -> createdNode.onPeerLinkLost(peer) },
         )
         createdNode = DesktopMeshNode(identity, bleMesh)
+        bleMesh.attachFragmentManager(createdNode.fragmentManager)
         bleTransport = bleMesh
         bleMesh.start()
         createdNode
     } else {
+        // No BLE helper (or no BLE on this OS): the node runs with nobody to talk to, and the UI
+        // says so instead of silently showing zero peers.
+        bleState.value = BleState.UNSUPPORTED
         val (n, lt) = DesktopMeshNode.overLoopback(identity, LoopbackHub())
         loopbackTransport = lt
         n
@@ -175,11 +192,13 @@ fun runDesktopApp(
         LaunchedEffect(totalUnread) {
             platform.tray.setUnreadCount(totalUnread)
         }
+        var windowFocused by remember { mutableStateOf(false) }
         LaunchedEffect(node) {
-            node.privateMessages.collect { list ->
-                val latest = list.lastOrNull() ?: return@collect
-                if (!windowVisible && latest.senderPeerID != identity.peerID) {
-                    platform.notifications.notify(latest.id, latest.sender, "New private message")
+            // Only messages newly received from peers; the preview names the sender, never the text.
+            node.incomingPrivate.collect { m ->
+                if (!(windowVisible && windowFocused)) {
+                    val from = m.senderPeerID?.let(node::peerNickname) ?: m.sender
+                    platform.notifications.notify(m.id, "Skein", "New private message from $from")
                 }
             }
         }
@@ -212,23 +231,94 @@ fun runDesktopApp(
             title = "Skein",
             state = rememberWindowState(width = 1080.dp, height = 720.dp),
         ) {
-            SkeinDesktopRoot(viewModel, ports)
+            val focused = LocalWindowInfo.current.isWindowFocused
+            LaunchedEffect(focused) { windowFocused = focused }
+            SkeinDesktopRoot(viewModel, ports, bleState)
         }
     }
 }
 
 @Composable
-fun SkeinDesktopRoot(viewModel: SkeinViewModel, ports: SkeinPorts) {
+fun SkeinDesktopRoot(viewModel: SkeinViewModel, ports: SkeinPorts, bleState: StateFlow<BleState>? = null) {
     val state by viewModel.state.collectAsState()
+    val strings = stringsFor(state.settings.language)
     SkeinTheme(state.settings.language) {
         CompositionLocalProvider(LocalLayoutDirection provides state.settings.language.layoutDirection) {
             Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                Row(Modifier.fillMaxSize()) {
-                    Sidebar(state, viewModel, Modifier.width(280.dp).fillMaxHeight())
-                    VerticalDivider()
-                    MainArea(state, viewModel, ports, Modifier.weight(1f))
+                Column(Modifier.fillMaxSize()) {
+                    if (bleState != null) BluetoothBanner(bleState, strings)
+                    Row(Modifier.fillMaxSize()) {
+                        Sidebar(state, viewModel, Modifier.width(280.dp).fillMaxHeight())
+                        VerticalDivider()
+                        MainArea(state, viewModel, ports, Modifier.weight(1f))
+                    }
                 }
             }
+            FirstRunPrompts(state.settings, viewModel, ports.platform, strings)
         }
+    }
+}
+
+/** Shows what is wrong with Bluetooth instead of silently listing zero peers. */
+@Composable
+private fun BluetoothBanner(bleState: StateFlow<BleState>, strings: UiStrings) {
+    val ble by bleState.collectAsState()
+    val text = when (ble) {
+        BleState.READY -> null
+        BleState.POWERED_OFF -> strings.bluetoothOff
+        BleState.UNAUTHORIZED -> strings.bluetoothUnauthorized
+        BleState.UNSUPPORTED -> strings.bluetoothUnavailable
+        BleState.HELPER_CRASHED -> strings.bluetoothHelperCrashed
+    } ?: return
+    Text(
+        text,
+        color = MaterialTheme.colorScheme.error,
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+    )
+}
+
+/** On first launch, asks once about start at login, then about crash reports. */
+@Composable
+private fun FirstRunPrompts(
+    settings: DesktopUiSettings,
+    viewModel: SkeinViewModel,
+    platform: PlatformTogglesPort,
+    strings: UiStrings,
+) {
+    var askAutostart by remember {
+        mutableStateOf(!settings.firstRunPromptsShown && platform.startAtLoginSupported && !settings.startAtLogin)
+    }
+    var askCrashReports by remember {
+        mutableStateOf(platform.crashReportsAvailable && !platform.crashReportsDecided())
+    }
+    if (!askAutostart && !askCrashReports && !settings.firstRunPromptsShown) {
+        LaunchedEffect(Unit) { viewModel.markFirstRunPromptsShown() }
+    }
+    if (askAutostart) {
+        val answer = { yes: Boolean ->
+            if (yes) viewModel.setStartAtLogin(true)
+            viewModel.markFirstRunPromptsShown()
+            askAutostart = false
+        }
+        AlertDialog(
+            onDismissRequest = { answer(false) },
+            title = { Text(strings.autostartPromptTitle) },
+            text = { Text(strings.autostartPromptBody) },
+            confirmButton = { TextButton(onClick = { answer(true) }) { Text(strings.yes) } },
+            dismissButton = { TextButton(onClick = { answer(false) }) { Text(strings.notNow) } },
+        )
+    } else if (askCrashReports) {
+        val answer = { yes: Boolean ->
+            viewModel.setCrashReports(yes)
+            askCrashReports = false
+        }
+        AlertDialog(
+            onDismissRequest = { answer(false) },
+            title = { Text(strings.crashPromptTitle) },
+            text = { Text(strings.crashPromptBody) },
+            confirmButton = { TextButton(onClick = { answer(true) }) { Text(strings.yes) } },
+            dismissButton = { TextButton(onClick = { answer(false) }) { Text(strings.notNow) } },
+        )
     }
 }

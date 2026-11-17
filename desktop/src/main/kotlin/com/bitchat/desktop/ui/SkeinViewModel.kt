@@ -17,6 +17,8 @@ data class DesktopUiSettings(
     val startAtLogin: Boolean = false,
     val crashReporting: Boolean = false,
     val saveHistory: Boolean = true,
+    /** The first-launch start-at-login / crash-report questions were answered. */
+    val firstRunPromptsShown: Boolean = false,
 )
 
 /** What fills the main pane next to the sidebar. */
@@ -235,6 +237,8 @@ class SkeinViewModel(
     }
 
     fun setLanguage(language: AppLanguage) = updateSettings { it.copy(language = language) }
+
+    fun markFirstRunPromptsShown() = updateSettings { it.copy(firstRunPromptsShown = true) }
 
     fun setBroadcastPower(power: BroadcastPower) {
         ports.platform.setBroadcastPower(power)

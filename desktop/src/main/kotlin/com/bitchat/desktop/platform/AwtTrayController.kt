@@ -14,6 +14,7 @@ import javax.swing.SwingUtilities
  * AWT [SystemTray]-backed [TrayController] for macOS menu bar and Windows notification area.
  */
 class AwtTrayController : TrayController {
+    @Volatile
     private var icon: TrayIcon? = null
     private var statusItem: MenuItem? = null
 
@@ -58,11 +59,13 @@ class AwtTrayController : TrayController {
         }
     }
 
-    fun displayMessage(title: String, body: String) {
-        val current = icon ?: return
+    /** Shows a tray balloon. False when there is no tray icon yet, so the caller can fall back. */
+    fun displayMessage(title: String, body: String): Boolean {
+        val current = icon ?: return false
         SwingUtilities.invokeLater {
             current.displayMessage(title, body, TrayIcon.MessageType.INFO)
         }
+        return true
     }
 
     override fun hide() {

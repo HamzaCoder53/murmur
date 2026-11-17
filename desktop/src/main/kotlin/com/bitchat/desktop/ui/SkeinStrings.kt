@@ -99,6 +99,16 @@ data class UiStrings(
     val aboutText: String,
     val version: String,
     val comingSoon: String,
+    val bluetoothOff: String,
+    val bluetoothUnauthorized: String,
+    val bluetoothUnavailable: String,
+    val bluetoothHelperCrashed: String,
+    val autostartPromptTitle: String,
+    val autostartPromptBody: String,
+    val crashPromptTitle: String,
+    val crashPromptBody: String,
+    val yes: String,
+    val notNow: String,
 )
 
 fun stringsFor(lang: AppLanguage): UiStrings = when (lang) {
@@ -176,6 +186,16 @@ private val EnglishStrings = UiStrings(
     aboutText = "Skein is a private messenger that works over Bluetooth without servers or accounts.",
     version = "Version",
     comingSoon = "Not available in this build yet.",
+    bluetoothOff = "Bluetooth is turned off. Turn it on to reach nearby people.",
+    bluetoothUnauthorized = "Skein is not allowed to use Bluetooth. Allow it in system settings.",
+    bluetoothUnavailable = "Bluetooth is not available on this computer, so Skein cannot reach anyone nearby.",
+    bluetoothHelperCrashed = "The Bluetooth helper stopped. Skein is restarting it.",
+    autostartPromptTitle = "Start Skein when you log in?",
+    autostartPromptBody = "Skein will start hidden in the menu bar or tray so messages can reach you. You can change this in Settings.",
+    crashPromptTitle = "Send anonymous crash reports?",
+    crashPromptBody = "If Skein crashes, send the error type and where in the code it happened to the developer (Sentry). Messages, nicknames, peer IDs, keys and locations are never sent. You can change this in Settings.",
+    yes = "Yes",
+    notNow = "Not now",
 )
 
 private val ArabicStrings = UiStrings(
@@ -248,4 +268,14 @@ private val ArabicStrings = UiStrings(
     aboutText = "سكين تطبيق مراسلة خاص يعمل عبر البلوتوث دون خوادم أو حسابات.",
     version = "الإصدار",
     comingSoon = "غير متاح في هذا الإصدار بعد.",
+    bluetoothOff = "البلوتوث مغلق. شغّله للوصول إلى الأشخاص القريبين.",
+    bluetoothUnauthorized = "سكين غير مسموح له باستخدام البلوتوث. اسمح بذلك من إعدادات النظام.",
+    bluetoothUnavailable = "البلوتوث غير متاح على هذا الكمبيوتر، لذلك لا يمكن لسكين الوصول إلى أحد قريب.",
+    bluetoothHelperCrashed = "توقف مساعد البلوتوث. يعيد سكين تشغيله.",
+    autostartPromptTitle = "تشغيل سكين عند تسجيل الدخول؟",
+    autostartPromptBody = "سيعمل سكين مخفيا في شريط القوائم أو علبة النظام لتصلك الرسائل. يمكنك تغيير ذلك من الإعدادات.",
+    crashPromptTitle = "إرسال تقارير أعطال مجهولة؟",
+    crashPromptBody = "إذا تعطل سكين، يُرسل نوع الخطأ وموضعه في الشيفرة إلى المطور (Sentry). لا تُرسل أبدا الرسائل أو الأسماء المستعارة أو معرفات النظراء أو المفاتيح أو المواقع. يمكنك تغيير ذلك من الإعدادات.",
+    yes = "نعم",
+    notNow = "ليس الآن",
 )

@@ -5,6 +5,8 @@ import com.bitchat.desktop.core.DesktopIdentity
 import com.bitchat.desktop.platform.AppPaths
 import com.bitchat.desktop.platform.CrashWatchdog
 import com.bitchat.desktop.platform.DesktopPlatform
+import com.bitchat.desktop.platform.HostOs
+import com.bitchat.desktop.platform.OsAutostartController
 import com.bitchat.desktop.platform.InMemoryKeyStore
 import com.bitchat.desktop.shim.OwnerOnlyFiles
 import com.bitchat.desktop.shim.ShimRuntime
@@ -29,9 +31,12 @@ fun main(args: Array<String>) {
         exitProcess(runSmoke())
     }
     if ("--watchdog" in args) {
-        val exe = ProcessHandle.current().info().command().orElse("java")
-        val childArgs = args.filter { it != "--watchdog" }
-        exitProcess(CrashWatchdog.run(listOf(exe) + childArgs))
+        // Only the packaged launcher can be re-run as a child; `java` alone has no classpath.
+        val launcher = OsAutostartController.launcherPath()
+        if (launcher != null) {
+            exitProcess(CrashWatchdog.run(listOf(launcher) + args.filter { it != "--watchdog" }))
+        }
+        System.err.println("Skein watchdog: no packaged launcher (jpackage.app-path); running without it.")
     }
     val startHidden = "--autostart" in args
     val paths = AppPaths.forCurrentHost()

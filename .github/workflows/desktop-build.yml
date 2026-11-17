@@ -74,14 +74,28 @@ jobs:
           }
 
       - name: Run desktop unit tests & smoke check
-        env:
-          SKEIN_SENTRY_DSN: ${{ secrets.SKEIN_SENTRY_DSN }}
         run: ./gradlew :desktop:test :desktop:run --args=--smoke --no-daemon
 
+      # SKEIN_SENTRY_DSN is baked into the app as a resource here (see desktop/build.gradle.kts);
+      # without the secret the installer ships with crash reporting unavailable.
       - name: Package native installer (${{ matrix.format }})
         env:
           SKEIN_SENTRY_DSN: ${{ secrets.SKEIN_SENTRY_DSN }}
         run: ./gradlew :desktop:package${{ matrix.format }} -PskeinTarget=${{ matrix.target }} --no-daemon
+
+      # The packaged app runs on its own jlinked runtime, not the CI JDK, so a missing JDK module
+      # only shows up here.
+      - name: Smoke-test the packaged app (macOS)
+        if: runner.os == 'macOS'
+        run: desktop/build/compose/binaries/main/app/Skein.app/Contents/MacOS/Skein --smoke
+
+      - name: Smoke-test the packaged app (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath desktop/build/compose/binaries/main/app/Skein/Skein.exe `
+            -ArgumentList '--smoke' -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 0) { throw "packaged smoke check failed (exit $($p.ExitCode))" }
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -91,3 +105,36 @@ jobs:
             desktop/build/compose/binaries/main/dmg/*.dmg
             desktop/build/compose/binaries/main/msi/*.msi
           if-no-files-found: error
+
+  # A desktop-v* tag attaches the installers to a *draft* GitHub Release. Publishing it stays a
+  # manual step (docs/desktop-build-plan.md: never publish without the maintainer). Builds are
+  # unsigned for now, per the plan, so the release notes say so.
+  release:
+    name: Attach installers to draft GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: skein-desktop-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create or update draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ls -l dist
+          (cd dist && sha256sum * > SHA256SUMS)
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+              --title "Skein desktop ${TAG#desktop-v}" \
+              --notes "Unsigned macOS DMG and Windows MSI builds. macOS: right-click Open on first launch. Windows: SmartScreen > More info > Run anyway."
+          fi
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber dist/*

@@ -19,8 +19,13 @@ import kotlin.concurrent.thread
 /**
  * [BleTransport] implementation that communicates with a native OS BLE helper process
  * (Swift CoreBluetooth on macOS, .NET WinRT on Windows) over newline-delimited JSON on stdio.
+ *
+ * A helper that dies is restarted with exponential backoff (1 s, 2 s, 4 s ... capped at 30 s),
+ * up to [maxRestarts] times in a row; the count resets once a restarted helper reports READY.
  */
 class StdioBleTransport(
+    private val maxRestarts: Int = 6,
+    private val sleepMs: (Long) -> Unit = Thread::sleep,
     private val endpointFactory: () -> Endpoint,
 ) : BleTransport {
 
@@ -45,6 +50,8 @@ class StdioBleTransport(
     }
 
     private val running = AtomicBoolean(false)
+    private val stoppedByCaller = AtomicBoolean(false)
+    private val consecutiveRestarts = java.util.concurrent.atomic.AtomicInteger(0)
     private val links = ConcurrentHashMap<String, BleLink>()
     private val writeLock = Any()
 
@@ -65,6 +72,11 @@ class StdioBleTransport(
         get() = currentState
 
     override fun start(listener: BleTransport.Listener) {
+        stoppedByCaller.set(false)
+        launch(listener)
+    }
+
+    private fun launch(listener: BleTransport.Listener) {
         if (!running.compareAndSet(false, true)) return
         this.listener = listener
         val ep = try {
@@ -73,6 +85,7 @@ class StdioBleTransport(
             running.set(false)
             updateState(BleState.HELPER_CRASHED)
             listener.onError("Failed to start BLE helper: ${e.message}")
+            scheduleRestart(listener)
             return
         }
         endpoint = ep
@@ -85,6 +98,7 @@ class StdioBleTransport(
     }
 
     override fun stop() {
+        stoppedByCaller.set(true)
         if (!running.compareAndSet(true, false)) return
         writeCommand(JSONObject().put("op", "stop"))
         try { writer?.close() } catch (_: Exception) { }
@@ -149,7 +163,22 @@ class StdioBleTransport(
                 try { ep.close() } catch (_: Exception) { }
                 endpoint = null
                 writer = null
+                scheduleRestart(l)
             }
+        }
+    }
+
+    private fun scheduleRestart(l: BleTransport.Listener) {
+        if (stoppedByCaller.get()) return
+        val attempt = consecutiveRestarts.incrementAndGet()
+        if (attempt > maxRestarts) {
+            l.onError("BLE helper keeps failing; gave up after $maxRestarts restarts")
+            return
+        }
+        val delay = minOf(MAX_BACKOFF_MS, 1_000L shl (attempt - 1).coerceAtMost(5))
+        thread(isDaemon = true, name = "skein-ble-restart") {
+            try { sleepMs(delay) } catch (_: InterruptedException) { return@thread }
+            if (!stoppedByCaller.get()) launch(l)
         }
     }
 
@@ -162,6 +191,7 @@ class StdioBleTransport(
         when (obj.optString("ev")) {
             "state" -> {
                 val parsed = parseState(obj.optString("state"))
+                if (parsed == BleState.READY) consecutiveRestarts.set(0)
                 updateState(parsed)
             }
             "linkUp" -> {
@@ -222,6 +252,10 @@ class StdioBleTransport(
         "unauthorized" -> BleState.UNAUTHORIZED
         "helpercrashed", "helper_crashed" -> BleState.HELPER_CRASHED
         else -> BleState.UNSUPPORTED
+    }
+
+    private companion object {
+        const val MAX_BACKOFF_MS = 30_000L
     }
 
     private fun writeCommand(obj: JSONObject): Boolean = synchronized(writeLock) {

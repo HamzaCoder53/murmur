@@ -7,6 +7,7 @@ import com.bitchat.android.mesh.FragmentingPacketSender
 import com.bitchat.android.mesh.MeshTransport
 import com.bitchat.android.model.RoutedPacket
 import com.bitchat.android.protocol.BitchatPacket
+import com.bitchat.desktop.core.DirectLinkBinder
 import com.bitchat.desktop.platform.BleLink
 import com.bitchat.desktop.platform.BleState
 import com.bitchat.desktop.platform.BleTransport
@@ -16,45 +17,58 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * Bridges [BleTransport] (native helper stdio link) to [MeshTransport] for [com.bitchat.android.mesh.MeshCore].
  * Reuses [FragmentingPacketSender] and [BLEPacketPaddingPolicy] so wire framing matches Android/iOS.
+ *
+ * A peer is mapped to a link only through [bindPeer], which the node calls after MeshCore has
+ * verified a direct (full-TTL) announce from that peer on that link. Raw packet headers never
+ * change the mapping: they are unauthenticated and relayed packets carry other peers' IDs.
  */
 class BleMeshTransport(
     private val ble: BleTransport,
-    scope: CoroutineScope,
+    private val scope: CoroutineScope,
     fragmentManager: FragmentManager? = null,
     private val onPacketReceived: (packet: BitchatPacket, senderPeerID: String, linkId: String) -> Unit,
     private val onStateChanged: (BleState) -> Unit = {},
-) : MeshTransport {
+    private val onPeerUnreachable: (peerID: String) -> Unit = {},
+) : MeshTransport, DirectLinkBinder {
 
     override val id: String = "ble"
 
+    private val liveLinks = ConcurrentHashMap<String, BleLink>()
     private val linkToPeer = ConcurrentHashMap<String, String>()
     private val peerToLink = ConcurrentHashMap<String, String>()
-    private val sender = FragmentingPacketSender(scope, fragmentManager, TAG)
+    private val bindLock = Any()
+
+    @Volatile
+    private var sender = FragmentingPacketSender(scope, fragmentManager, TAG)
+
+    /** Fragments outgoing packets with the node's [FragmentManager], as the phone's transports do. */
+    fun attachFragmentManager(fragmentManager: FragmentManager) {
+        sender = FragmentingPacketSender(scope, fragmentManager, TAG)
+    }
 
     fun start() {
         ble.start(object : BleTransport.Listener {
-            override fun onLinkUp(link: BleLink) = Unit
+            override fun onLinkUp(link: BleLink) {
+                liveLinks[link.linkId] = link
+            }
+
+            override fun onLinkUpdated(link: BleLink) {
+                liveLinks[link.linkId] = link
+            }
 
             override fun onLinkDown(linkId: String) {
-                val peer = linkToPeer.remove(linkId)
-                if (peer != null) {
-                    peerToLink.remove(peer, linkId)
+                liveLinks.remove(linkId)
+                val lostPeer = synchronized(bindLock) {
+                    val peer = linkToPeer.remove(linkId)
+                    if (peer != null && peerToLink.remove(peer, linkId)) peer else null
                 }
+                lostPeer?.let(onPeerUnreachable)
             }
 
             override fun onFrame(linkId: String, frame: ByteArray) {
                 val packet = BitchatPacket.fromBinaryData(frame) ?: return
+                liveLinks.putIfAbsent(linkId, BleLink(linkId = linkId, rssi = null))
                 val senderPeerID = packet.senderID.joinToString("") { "%02x".format(it) }
-                linkToPeer[linkId] = senderPeerID
-                // Only bind peer -> link on a full-TTL direct announce or if no route exists yet,
-                // so multi-hop relayed packets do not hijack direct-link routing.
-                val isDirectAnnounce = packet.type == com.bitchat.android.protocol.MessageType.ANNOUNCE.value &&
-                    packet.ttl == com.bitchat.android.util.AppConstants.MESSAGE_TTL_HOPS
-                if (isDirectAnnounce) {
-                    peerToLink[senderPeerID] = linkId
-                } else {
-                    peerToLink.putIfAbsent(senderPeerID, linkId)
-                }
                 onPacketReceived(packet, senderPeerID, linkId)
             }
 
@@ -70,8 +84,22 @@ class BleMeshTransport(
 
     fun stop() {
         ble.stop()
-        linkToPeer.clear()
-        peerToLink.clear()
+        liveLinks.clear()
+        synchronized(bindLock) {
+            linkToPeer.clear()
+            peerToLink.clear()
+        }
+    }
+
+    override fun bindPeer(linkAddress: String, peerID: String): Boolean {
+        if (!liveLinks.containsKey(linkAddress)) return false
+        synchronized(bindLock) {
+            // The peer moved to a new link: forget the old link's claim on it.
+            peerToLink.put(peerID, linkAddress)?.let { old -> if (old != linkAddress) linkToPeer.remove(old, peerID) }
+            // The link now belongs to this peer: drop whoever was bound to it before.
+            linkToPeer.put(linkAddress, peerID)?.let { prev -> if (prev != peerID) peerToLink.remove(prev, linkAddress) }
+        }
+        return true
     }
 
     override fun broadcastPacket(routed: RoutedPacket): Boolean {
@@ -83,8 +111,10 @@ class BleMeshTransport(
 
     override fun sendPacketToPeer(peerID: String, packet: BitchatPacket): Boolean {
         val linkId = peerToLink[peerID] ?: return false
-        val bytes = encodeForBle(packet) ?: return false
-        return ble.send(linkId, bytes)
+        return sender.send(RoutedPacket(packet), "ble-peer") { single ->
+            val bytes = encodeForBle(single.packet) ?: return@send false
+            ble.send(linkId, bytes)
+        }
     }
 
     override fun sendPacketToLink(
@@ -93,9 +123,11 @@ class BleMeshTransport(
         packet: BitchatPacket,
     ): Boolean {
         val linkId = ingressLinkID.ifEmpty { relayAddress }
-        if (!linkToPeer.containsKey(linkId)) return false
-        val bytes = encodeForBle(packet) ?: return false
-        return ble.send(linkId, bytes)
+        if (!liveLinks.containsKey(linkId)) return false
+        return sender.send(RoutedPacket(packet), "ble-link") { single ->
+            val bytes = encodeForBle(single.packet) ?: return@send false
+            ble.send(linkId, bytes)
+        }
     }
 
     override fun cancelTransfer(transferId: String): Boolean = sender.cancelTransfer(transferId)
