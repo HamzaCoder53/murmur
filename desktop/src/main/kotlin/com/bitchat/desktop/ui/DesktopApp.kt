@@ -36,9 +36,11 @@ import com.bitchat.desktop.ble.BleMeshTransport
 import com.bitchat.desktop.core.DesktopIdentity
 import com.bitchat.desktop.core.DesktopMeshNode
 import com.bitchat.desktop.core.LoopbackHub
+import com.bitchat.desktop.lan.LanMeshTransport
 import com.bitchat.desktop.link.DesktopLinkController
 import com.bitchat.desktop.link.DesktopLinkedAppBridge
 import com.bitchat.desktop.nostr.DesktopNostrRelayClient
+import com.bitchat.desktop.nostr.NostrDirectMessageBridge
 import com.bitchat.desktop.nostr.NostrLocationChannelsPort
 import com.bitchat.desktop.platform.BleState
 import com.bitchat.desktop.platform.DesktopPlatform
@@ -169,6 +171,10 @@ fun runDesktopApp(
         relayClient = relayClient,
         scope = appScope,
     )
+    val dmBridge = NostrDirectMessageBridge(ctx, node, relayClient).also { it.start() }
+    val lanTransport = LanMeshTransport(identity.peerID, platform.discovery) { pkt, senderPeerID, linkAddr ->
+        node.receive(pkt, senderPeerID, linkAddr)
+    }.also { runCatching { it.start() } }
 
     val ports = customizePorts(
         SkeinPorts(
@@ -201,6 +207,8 @@ fun runDesktopApp(
         val shutdown = {
             platform.tray.hide()
             viewModel.close()
+            dmBridge.stop()
+            lanTransport.stop()
             relayClient.stop()
             link?.stop()
             (platform.discovery as? AutoCloseable)?.close()

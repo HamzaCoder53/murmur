@@ -369,6 +369,8 @@ private fun Composer(state: SkeinUiState, vm: SkeinViewModel) {
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (state.selected !is ConversationId.Location) {
+                var recording by remember { mutableStateOf(false) }
+                val recorder = remember { DesktopAudioRecorder() }
                 OutlinedButton(onClick = {
                     val dialog = java.awt.FileDialog(null as java.awt.Frame?, "Attach file", java.awt.FileDialog.LOAD)
                     dialog.isVisible = true
@@ -378,6 +380,18 @@ private fun Composer(state: SkeinUiState, vm: SkeinViewModel) {
                         vm.sendFile(java.io.File(dir, name))
                     }
                 }) { Text("+") }
+                OutlinedButton(onClick = {
+                    if (!recording) {
+                        if (recorder.start()) recording = true
+                    } else {
+                        recording = false
+                        val tmpDir = java.io.File(System.getProperty("java.io.tmpdir"), "skein-voice")
+                        recorder.stopToFile(tmpDir)?.let { wav ->
+                            vm.sendFile(wav)
+                            wav.delete()
+                        }
+                    }
+                }) { Text(if (recording) "Stop" else "Mic") }
             }
             OutlinedTextField(
                 state.draft,
